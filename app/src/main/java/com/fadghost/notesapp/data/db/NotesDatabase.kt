@@ -1,0 +1,54 @@
+package com.fadghost.notesapp.data.db
+
+import androidx.room.Database
+import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.fadghost.notesapp.data.db.dao.DiaryDao
+import com.fadghost.notesapp.data.db.dao.EventDao
+import com.fadghost.notesapp.data.db.dao.FolderDao
+import com.fadghost.notesapp.data.db.dao.NoteDao
+import com.fadghost.notesapp.data.db.dao.ReminderDao
+import com.fadghost.notesapp.data.db.dao.TagDao
+import com.fadghost.notesapp.data.db.entity.DiaryEntry
+import com.fadghost.notesapp.data.db.entity.Event
+import com.fadghost.notesapp.data.db.entity.Folder
+import com.fadghost.notesapp.data.db.entity.Note
+import com.fadghost.notesapp.data.db.entity.NoteTagCrossRef
+import com.fadghost.notesapp.data.db.entity.Reminder
+import com.fadghost.notesapp.data.db.entity.Tag
+
+@Database(
+    entities = [
+        Note::class,
+        Folder::class,
+        Tag::class,
+        NoteTagCrossRef::class,
+        DiaryEntry::class,
+        Event::class,
+        Reminder::class
+    ],
+    version = 1,
+    exportSchema = true
+)
+@TypeConverters(Converters::class)
+abstract class NotesDatabase : RoomDatabase() {
+    abstract fun noteDao(): NoteDao
+    abstract fun folderDao(): FolderDao
+    abstract fun tagDao(): TagDao
+    abstract fun diaryDao(): DiaryDao
+    abstract fun eventDao(): EventDao
+    abstract fun reminderDao(): ReminderDao
+
+    companion object {
+        const val NAME = "notes.db"
+
+        /** Creates the FTS5 external-content table + sync triggers on first run. */
+        val CALLBACK: Callback = object : Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                super.onCreate(db)
+                NotesFts.create(db)
+            }
+        }
+    }
+}
