@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,10 +18,28 @@ android {
         minSdk = 31
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1-alpha"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Release signing: reads a keystore.properties OUTSIDE the repo (never committed).
+    // CI builds unsigned; signing happens on the developer machine only (PLAN.md §13).
+    val keystorePropsFile = file(
+        System.getenv("NOTESAPP_KEYSTORE_PROPS")
+            ?: "REDACTED_KEYSTORE_PATH"
+    )
+    if (keystorePropsFile.exists()) {
+        val props = Properties().apply { keystorePropsFile.inputStream().use { s -> load(s) } }
+        signingConfigs {
+            create("release") {
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -29,6 +49,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
