@@ -117,6 +117,10 @@ fun EditorScreen(
     val attachmentsById by attachViewModel.byId.collectAsStateWithLifecycle()
     var showAttachMenu by remember { mutableStateOf(false) }
     var openAttachment by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Attachment?>(null) }
+    var expandAttachment by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Attachment?>(null) }
+    var annotateAttachment by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Attachment?>(null) }
+    var removedAttachment by remember { mutableStateOf<com.fadghost.notesapp.data.attach.RemovedAttachment?>(null) }
+    var bodyBeforeRemove by remember { mutableStateOf<TextFieldValue?>(null) }
 
     LaunchedEffect(noteId) { viewModel.open(noteId, restoreDraft) }
     LaunchedEffect(state.noteId) { audioViewModel.bind(state.noteId) }
@@ -233,6 +237,35 @@ fun EditorScreen(
         if (uris.isNotEmpty()) viewModel.ensureSaved { id ->
             uris.forEach { uri -> attachViewModel.ingest(id, uri) { att -> insertAttachment(att.id) } }
         }
+    }
+
+    // Remove an attachment (M-A): strip its [[att:id]] token from the body and delete
+    // the row+file, retaining both for an undoable restore (same id -> token re-resolves).
+    fun removeAttachment(att: com.fadghost.notesapp.data.db.entity.Attachment) {
+        openAttachment = null
+        val before = bodyValue
+        val token = "[[att:${att.id}]]"
+        val idx = bodyValue.text.indexOf(token)
+        if (idx >= 0) {
+            var start = idx
+            var end = idx + token.length
+            if (end < bodyValue.text.length && bodyValue.text[end] == ' ') end++
+            else if (start > 0 && bodyValue.text[start - 1] == ' ') start--
+            val newText = bodyValue.text.removeRange(start, end)
+            applyBody(
+                TextFieldValue(newText, TextRange(start.coerceIn(0, newText.length))),
+                UndoStack.CoalesceKey.BOUNDARY
+            )
+        }
+        bodyBeforeRemove = before
+        attachViewModel.remove(att.id) { removed -> removedAttachment = removed }
+    }
+
+    fun undoRemoveAttachment() {
+        bodyBeforeRemove?.let { applyBody(it, UndoStack.CoalesceKey.BOUNDARY) }
+        removedAttachment?.let { attachViewModel.restore(it) }
+        removedAttachment = null
+        bodyBeforeRemove = null
     }
 
     // Drag-and-drop into the editor (M-A): accept dropped image/file content URIs.
@@ -582,6 +615,58 @@ fun EditorScreen(
             onFile = { showAttachMenu = false; filePicker.launch(arrayOf("*/*")) },
             onPasteImage = { showAttachMenu = false; onPasteImage() },
             onDismiss = { showAttachMenu = false }
+        )
+
+        // Tap a chip → attachment popover (M-A part 4): preview, name, size, actions.
+        com.fadghost.notesapp.ui.attach.AttachmentPopover(
+            attachment = openAttachment,
+            onExpand = { att -> openAttachment = null; expandAttachment = att },
+            onAnnotate = { att -> openAttachment = null; annotateAttachment = att },
+            onShare = { att -> com.fadghost.notesapp.ui.attach.AttachmentActions.share(context, att) },
+            onOpenExternally = { att -> com.fadghost.notesapp.ui.attach.AttachmentActions.openExternally(context, att) },
+            onRemove = { att -> removeAttachment(att) },
+            onDismiss = { openAttachment = null }
+        )
+
+        // Fullscreen image viewer (M-A part 5).
+        com.fadghost.notesapp.ui.attach.AttachmentViewer(
+            attachment = expandAttachment,
+            onDismiss = { expandAttachment = null }
+        )
+
+        // Undo snackbar for an attachment removal (M-A part 4).
+        com.fadghost.notesapp.ui.components.AuraUndoSnackbar(
+            message = removedAttachment?.let {
+                com.fadghost.notesapp.ui.components.UndoMessage("Attachment removed")
+            },
+            onAction = { undoRemoveAttachment() },
+            onDismiss = { removedAttachment = null; bodyBeforeRemove = null },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp)
+        )
+    }
+
+    // Annotate editor (M-A part 6): a full screen over the editor.
+    annotateAttachment?.let { att ->
+        com.fadghost.notesapp.ui.attach.AnnotateScreen(
+            attachment = att,
+            onCancel = { annotateAttachment = null },
+            onSave = { bytes ->
+                attachViewModel.saveAnnotation(state.noteId, att, bytes) { newId ->
+                    // Repoint the note token at the annotated copy (original preserved).
+                    val old = "[[att:${att.id}]]"
+                    val new = "[[att:$newId]]"
+                    if (bodyValue.text.contains(old)) {
+                        applyBody(
+                            TextFieldValue(bodyValue.text.replace(old, new), bodyValue.selection),
+                            UndoStack.CoalesceKey.BOUNDARY
+                        )
+                    }
+                    annotateAttachment = null
+                }
+            }
         )
     }
 }

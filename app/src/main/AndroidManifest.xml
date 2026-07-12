@@ -69,6 +69,17 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- Share attachment files out via a content:// uri (M-A). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Quick-settings "New note" tile (PLAN.md §6). -->
         <service
             android:name=".ui.capture.NewNoteTileService"

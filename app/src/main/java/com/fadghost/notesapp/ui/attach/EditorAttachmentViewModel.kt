@@ -73,4 +73,23 @@ class EditorAttachmentViewModel @Inject constructor(
     fun restore(removed: RemovedAttachment) {
         viewModelScope.launch { repository.restore(removed) }
     }
+
+    /**
+     * Save an annotated copy (M-A part 6): store [bytes] as a NEW image attachment linked
+     * to [original] via annotatedOfId (the original is untouched), then hand the new id
+     * back so the note token can be repointed at the copy.
+     */
+    fun saveAnnotation(noteId: Long, original: Attachment, bytes: ByteArray, onSaved: (Long) -> Unit) {
+        viewModelScope.launch {
+            val stem = original.displayName.substringBeforeLast('.', original.displayName)
+            val att = repository.store(
+                noteId = noteId,
+                bytes = bytes,
+                displayName = "$stem-annotated.png",
+                mime = "image/png",
+                annotatedOfId = original.id
+            )
+            onSaved(att.id)
+        }
+    }
 }

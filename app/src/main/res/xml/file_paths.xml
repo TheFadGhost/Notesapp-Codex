@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Attachment files live under filesDir/attachments/ (M-A). Shared read-only via
+         the system share sheet using a content:// uri, never a raw file path. -->
+    <files-path name="attachments" path="attachments/" />
+</paths>
