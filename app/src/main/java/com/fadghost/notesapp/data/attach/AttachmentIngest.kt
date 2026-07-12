@@ -45,7 +45,12 @@ class AttachmentIngest @Inject constructor(
 
     private suspend fun store(noteId: Long, bytes: ByteArray, name: String, mime: String): Attachment {
         val (finalBytes, finalMime) = maybeCompressImage(bytes, mime)
-        return repository.store(noteId, finalBytes, name, finalMime)
+        val att = repository.store(noteId, finalBytes, name, finalMime)
+        // Queue the silent P7 image-index job for images (runs when online).
+        if (att.isImage) {
+            com.fadghost.notesapp.data.ai.work.ImageIndexWorker.enqueue(context, att.id)
+        }
+        return att
     }
 
     /**

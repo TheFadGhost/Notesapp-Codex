@@ -21,9 +21,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * OpenRouter API client (PLAN.md §5). Two call styles:
@@ -174,6 +179,55 @@ class OpenRouterClient(
                 StructuredResult(content, resp.usage)
             }
         }
+
+    // --- Vision (image indexing, M-A P7) ----------------------------------------
+
+    /**
+     * Describe/OCR a single image via multimodal `/chat/completions` (M-A P7). The user
+     * message carries a data-URL image part; [systemPrompt] is the verbatim IMAGE_INDEX
+     * prompt. Non-streaming, low temperature; returns the raw assistant content + usage.
+     * Retries on 429/5xx; the key is only ever a bearer header.
+     */
+    suspend fun describeImage(
+        apiKey: String,
+        model: String,
+        dataUrl: String,
+        systemPrompt: String,
+        userText: String,
+        temperature: Double = 0.1
+    ): StructuredResult = withRetry {
+        val body = buildJsonObject {
+            put("model", model)
+            put("stream", false)
+            put("temperature", temperature)
+            putJsonArray("messages") {
+                addJsonObject {
+                    put("role", "system")
+                    put("content", systemPrompt)
+                }
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("content") {
+                        addJsonObject {
+                            put("type", "text")
+                            put("text", userText)
+                        }
+                        addJsonObject {
+                            put("type", "image_url")
+                            putJsonObject("image_url") { put("url", dataUrl) }
+                        }
+                    }
+                }
+            }
+        }
+        val resp = http.preparePost("${config.baseUrl}/chat/completions") {
+            authHeaders(apiKey)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.execute { it.toChatResponseOrThrow(model) }
+        val content = resp.firstContent?.takeIf { it.isNotBlank() } ?: throw EmptyCompletion()
+        StructuredResult(content, resp.usage)
+    }
 
     // --- Transcription (STT, multipart upload) ----------------------------------
 

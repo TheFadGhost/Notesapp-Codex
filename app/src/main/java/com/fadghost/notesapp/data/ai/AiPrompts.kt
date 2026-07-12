@@ -18,6 +18,20 @@ import java.time.format.DateTimeFormatter
  */
 object AiPrompts {
 
+    /**
+     * P7 IMAGE_INDEX_V1 (V3-PROMPTS.md §1.8) — verbatim. Background OCR/alt-text for one
+     * image attachment so search can find images by their text/description. Runs on the
+     * vision model at temp 0.1; the response is `{"ocr_text","description","tags"}`.
+     */
+    const val IMAGE_INDEX_V1 = """You index one image from a personal notes app for search.
+
+STRICT RULES:
+1. ocr_text: transcribe ALL legible text verbatim, reading order, max 1200 chars.
+   Empty string if none.
+2. description: one factual sentence, max 120 chars, what the image shows. No guessing
+   about people's identities, no evaluations.
+3. tags: max 5 lowercase single words (objects/scene/document-type)."""
+
     /** Clean-up system prompt (PLAN.md §5): grammar, filler, structure, keep all facts + language. */
     const val CLEANUP_SYSTEM = """You are a careful note editor. Rewrite the user's note so it is clean and well structured, following ALL of these rules:
 - Fix grammar, spelling and punctuation.

@@ -15,6 +15,7 @@ import com.fadghost.notesapp.data.ai.net.Usage
 import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.data.ai.parse.ActionExtractionParser
 import com.fadghost.notesapp.data.ai.parse.ExtractOutcome
+import com.fadghost.notesapp.data.ai.parse.JsonExtractor
 import com.fadghost.notesapp.data.ai.parse.ProposedAction
 import com.fadghost.notesapp.data.ai.text.Chunker
 import com.fadghost.notesapp.data.ai.text.TokenEstimator
@@ -25,7 +26,12 @@ import com.fadghost.notesapp.data.db.dao.ReminderDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.time.ZoneId
+import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -278,6 +284,40 @@ class AiRepository @Inject constructor(
         return (parsed as? ExtractOutcome.Success)?.items?.firstOrNull() ?: action
     }
 
+    // --- Image indexing (M-A P7, silent background OCR/alt-text) -----------------
+
+    /** Result of indexing one image; either field may be null/blank. */
+    data class ImageIndex(val ocrText: String?, val description: String?)
+
+    /**
+     * OCR + describe one image via the vision model (M-A P7), using the VERBATIM
+     * [AiPrompts.IMAGE_INDEX_V1] prompt at temp 0.1. Records cost like any other call.
+     * Throws [OpenRouterError] on failure so the offline queue worker can retry; runs
+     * SILENTLY (no UI surface — V3-DELIGHT silence rule).
+     */
+    suspend fun indexImage(noteId: Long?, bytes: ByteArray, mime: String): ImageIndex {
+        val key = requireKey()
+        val model = IMAGE_INDEX_MODEL
+        val b64 = Base64.getEncoder().encodeToString(bytes)
+        val dataUrl = "data:${mime.ifBlank { "image/png" }};base64,$b64"
+        val res = client.describeImage(
+            apiKey = key,
+            model = model,
+            dataUrl = dataUrl,
+            systemPrompt = AiPrompts.IMAGE_INDEX_V1,
+            userText = "Index this image. Reply with only the JSON object.",
+            temperature = 0.1
+        )
+        recordCost(res.usage, model, FEATURE_IMAGE_INDEX, noteId)
+        val jsonStr = JsonExtractor.extract(res.content) ?: res.content
+        val obj = runCatching { indexJson.parseToJsonElement(jsonStr).jsonObject }.getOrNull()
+            ?: return ImageIndex(null, null)
+        fun str(key: String) = obj[key]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
+        return ImageIndex(ocrText = str("ocr_text"), description = str("description"))
+    }
+
+    private val indexJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
     // --- Inserting accepted actions into Room -----------------------------------
 
     /**
@@ -345,6 +385,10 @@ class AiRepository @Inject constructor(
     companion object {
         const val FEATURE_CLEANUP = "cleanup"
         const val FEATURE_EXTRACT = "extract"
+        const val FEATURE_IMAGE_INDEX = "image_index"
+
+        /** Vision model for image indexing (V3-PROMPTS.md §1.8 — image via chat completions). */
+        const val IMAGE_INDEX_MODEL = "google/gemini-2.5-flash"
         private const val DEFAULT_CONTEXT = 32000
 
         /** Floor for structured/short calls; reasoning variants need ≥2048 (item 8). */
