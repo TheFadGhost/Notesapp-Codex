@@ -39,7 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.components.AuraEmptyState
@@ -81,6 +83,9 @@ fun NotesScreen(
     var menuFor by remember { mutableStateOf<NoteCardUi?>(null) }
     var movingNote by remember { mutableStateOf<NoteCardUi?>(null) }
     var managingTag by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Tag?>(null) }
+    // Permanent (hard) delete is irreversible — unlike soft-delete it has no Undo, so it
+    // must go through an explicit confirm popover (Bug 3).
+    var pendingForeverDelete by remember { mutableStateOf<NoteCardUi?>(null) }
 
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -106,18 +111,37 @@ fun NotesScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
+                    // Single-line + ellipsis so a narrow (320dp) width can never char-wrap
+                    // the title to "N / ot / es" (P0-2). The eyebrow is pinned to one line too.
                     BasicText(
                         "YOUR LIBRARY",
-                        style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
+                        style = AuraType.labelSm.copy(color = tokens.colors.textSecondary),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(Modifier.height(2.dp))
-                    BasicText("Notes", style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+                    BasicText(
+                        "Notes",
+                        style = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                if (notes.isNotEmpty()) {
+                // The note count competes with the title for width; drop it on narrow
+                // screens so "Notes" always has room (P0-2). The grid toggle stays.
+                val roomForCount = LocalConfiguration.current.screenWidthDp >= 360
+                if (notes.isNotEmpty() && roomForCount) {
                     val pinned = notes.count { it.pinned }
                     val countText = "${notes.size} ${if (notes.size == 1) "note" else "notes"}" +
                         if (pinned > 0) " · $pinned pinned" else ""
-                    BasicText(countText, style = AuraType.bodySm.copy(color = tokens.colors.textSecondary))
+                    BasicText(
+                        countText,
+                        style = AuraType.bodySm.copy(color = tokens.colors.textSecondary),
+                        maxLines = 1,
+                        softWrap = false
+                    )
                     Spacer(Modifier.width(12.dp))
                 }
                 val gridToggleInteraction = remember { MutableInteractionSource() }
@@ -176,7 +200,7 @@ fun NotesScreen(
                             onLongPress = { menuFor = note },
                             onPin = { viewModel.togglePin(note.id, note.pinned) },
                             onArchive = { if (note.archived) viewModel.unarchive(note.id) else viewModel.archive(note.id) },
-                            onDelete = { if (note.inTrash) viewModel.deleteForever(note.id) else viewModel.delete(note.id) },
+                            onDelete = { if (note.inTrash) pendingForeverDelete = note else viewModel.delete(note.id) },
                             modifier = Modifier.animateItem(),
                             query = query
                         )
@@ -196,8 +220,23 @@ fun NotesScreen(
 
         menuFor?.let { note ->
             NoteContextMenu(
-                items = contextItemsFor(note, viewModel) { movingNote = it },
+                items = contextItemsFor(
+                    note,
+                    viewModel,
+                    onMove = { movingNote = it },
+                    onDeleteForever = { pendingForeverDelete = it }
+                ),
                 onDismiss = { menuFor = null }
+            )
+        }
+
+        pendingForeverDelete?.let { note ->
+            DeleteForeverOverlay(
+                onConfirm = {
+                    viewModel.deleteForever(note.id)
+                    pendingForeverDelete = null
+                },
+                onDismiss = { pendingForeverDelete = null }
             )
         }
 
@@ -226,11 +265,13 @@ fun NotesScreen(
 private fun contextItemsFor(
     note: NoteCardUi,
     vm: NotesViewModel,
-    onMove: (NoteCardUi) -> Unit
+    onMove: (NoteCardUi) -> Unit,
+    onDeleteForever: (NoteCardUi) -> Unit
 ): List<ContextMenuItem> = if (note.inTrash) {
     listOf(
         ContextMenuItem(Glyph.RESTORE, "Restore") { vm.restore(note.id) },
-        ContextMenuItem(Glyph.TRASH, "Delete forever", danger = true) { vm.deleteForever(note.id) }
+        // Route through the confirm popover — hard delete has no Undo (Bug 3).
+        ContextMenuItem(Glyph.TRASH, "Delete forever", danger = true) { onDeleteForever(note) }
     )
 } else {
     listOf(
@@ -347,6 +388,85 @@ private fun FolderMoveOverlay(
             com.fadghost.notesapp.ui.components.FlowChips {
                 PlainChip("None", selected = false) { onPick(null) }
                 folders.forEach { f -> PlainChip(f.name, selected = false) { onPick(f.id) } }
+            }
+        }
+    }
+}
+
+/**
+ * Irreversible confirm popover for permanent (hard) delete from Trash (Bug 3). Unlike
+ * soft-delete there is no Undo, so the destructive action is gated behind an explicit
+ * Cancel/Delete choice. Aura-styled (scrim + floating card, danger-filled commit
+ * button), presses give feedback via [auraPress], all theming via tokens.
+ */
+@Composable
+private fun DeleteForeverOverlay(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val tokens = Aura.tokens
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = tokens.elevation.scrim))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            Modifier
+                .padding(24.dp)
+                .auraFloatShadow(RoundedCornerShape(tokens.radii.lg))
+                .clip(RoundedCornerShape(tokens.radii.lg))
+                .background(tokens.colors.surface)
+                .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.lg))
+                .auraTopHighlight(tokens.radii.lg)
+                // Swallow taps on the card so the scrim's dismiss doesn't fire.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                )
+                .padding(20.dp)
+        ) {
+            BasicText("Delete forever?", style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+            Spacer(Modifier.height(6.dp))
+            BasicText(
+                "This note will be permanently removed. This can't be undone.",
+                style = AuraType.body.copy(color = tokens.colors.textSecondary)
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                val cancelInteraction = remember { MutableInteractionSource() }
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(tokens.radii.pill))
+                        .auraPress(cancelInteraction)
+                        .clickable(
+                            interactionSource = cancelInteraction,
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    BasicText("Cancel", style = AuraType.label.copy(color = tokens.colors.textSecondary))
+                }
+                Spacer(Modifier.width(8.dp))
+                val confirmInteraction = remember { MutableInteractionSource() }
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(tokens.radii.pill))
+                        .auraPress(confirmInteraction, tint = true)
+                        .background(tokens.colors.danger)
+                        .clickable(
+                            interactionSource = confirmInteraction,
+                            indication = null,
+                            onClick = onConfirm
+                        )
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                ) {
+                    BasicText("Delete", style = AuraType.label.copy(color = tokens.colors.background))
+                }
             }
         }
     }

@@ -164,7 +164,12 @@ private fun DiaryContent(
                     style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
                 )
                 Spacer(Modifier.height(2.dp))
-                BasicText("Diary", style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+                BasicText(
+                    "Diary",
+                    style = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
 

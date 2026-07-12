@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -182,7 +183,13 @@ fun CalendarScreen(
                         style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
                     )
                     Spacer(Modifier.size(2.dp))
-                    BasicText("Calendar", style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+                    BasicText(
+                        "Calendar",
+                        style = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
             }
             item(key = "banners") {
@@ -316,6 +323,9 @@ private fun WeekStrip(
             Column(
                 Modifier
                     .weight(1f)
+                    // Bound the interactive height so an oversized day cell can never sprawl
+                    // down into the floating nav pill's touch band and steal nav taps (P0-1b).
+                    .heightIn(max = 72.dp)
                     .clip(RoundedCornerShape(tokens.radii.sm))
                     .auraPress(dayInteraction)
                     .background(if (isSel) tokens.colors.accent else androidx.compose.ui.graphics.Color.Transparent)
