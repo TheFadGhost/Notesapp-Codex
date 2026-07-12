@@ -26,11 +26,12 @@ android {
 
     // Release signing: reads a keystore.properties OUTSIDE the repo (never committed).
     // CI builds unsigned; signing happens on the developer machine only (PLAN.md §13).
-    val keystorePropsFile = file(
-        System.getenv("NOTESAPP_KEYSTORE_PROPS")
-            ?: "REDACTED_KEYSTORE_PATH"
-    )
-    if (keystorePropsFile.exists()) {
+    // Configure via env var NOTESAPP_KEYSTORE_PROPS, or a Gradle project property
+    // `keystore.props` (e.g. in ~/.gradle/gradle.properties). No hardcoded path here.
+    val keystorePropsPath = System.getenv("NOTESAPP_KEYSTORE_PROPS")
+        ?: (project.findProperty("keystore.props") as String?)
+    val keystorePropsFile = keystorePropsPath?.let { file(it) }
+    if (keystorePropsFile != null && keystorePropsFile.exists()) {
         val props = Properties().apply { keystorePropsFile.inputStream().use { s -> load(s) } }
         signingConfigs {
             create("release") {
