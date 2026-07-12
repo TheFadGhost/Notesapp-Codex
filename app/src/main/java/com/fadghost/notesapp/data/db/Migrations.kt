@@ -132,3 +132,48 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_attachments_annotatedOfId` ON `attachments` (`annotatedOfId`)")
     }
 }
+
+/**
+ * v7 -> v8 (M-B): the Folio memory vault's Room MIRROR (V3-PROMPTS.md §1.1). Files under
+ * `filesDir/memory/` are the source of truth; these tables are a queryable projection,
+ * rebuilt from the files on checksum mismatch at app start. Adds:
+ *  - [com.fadghost.notesapp.data.db.entity.MemoryEntry] `memory_entries` (slug PK + the
+ *    mirrored fields: title/type/tags CSV/body/source/created/updated),
+ *  - [com.fadghost.notesapp.data.db.entity.MemoryLink] `memory_links` edge table for the
+ *    graph (composite PK, both columns indexed),
+ *  - the raw `memory_fts` FTS4 table (NOT a Room entity, so it is absent from the exported
+ *    schema — created here for existing installs, exactly as [NotesFts] does for note_fts).
+ * Purely additive; nothing existing is touched. Column sets / indices mirror the entities
+ * exactly so Room's post-migration validation against `schemas/8.json` passes.
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `memory_entries` (" +
+                "`slug` TEXT NOT NULL, " +
+                "`title` TEXT NOT NULL, " +
+                "`type` TEXT NOT NULL, " +
+                "`tags` TEXT NOT NULL, " +
+                "`body` TEXT NOT NULL, " +
+                "`source` TEXT NOT NULL, " +
+                "`created` TEXT NOT NULL, " +
+                "`updated` TEXT NOT NULL, " +
+                "PRIMARY KEY(`slug`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_memory_entries_type` ON `memory_entries` (`type`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_memory_entries_updated` ON `memory_entries` (`updated`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `memory_links` (" +
+                "`fromSlug` TEXT NOT NULL, " +
+                "`toSlug` TEXT NOT NULL, " +
+                "PRIMARY KEY(`fromSlug`, `toSlug`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_memory_links_fromSlug` ON `memory_links` (`fromSlug`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_memory_links_toSlug` ON `memory_links` (`toSlug`)")
+
+        // Raw FTS4 index (framework SQLite has no fts5). Not a Room entity → untracked by
+        // schema validation, like note_fts.
+        MemoryFts.create(db)
+    }
+}

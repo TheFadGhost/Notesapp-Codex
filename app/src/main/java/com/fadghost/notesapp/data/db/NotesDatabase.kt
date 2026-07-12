@@ -13,6 +13,7 @@ import com.fadghost.notesapp.data.db.dao.CachedModelDao
 import com.fadghost.notesapp.data.db.dao.DiaryDao
 import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.FolderDao
+import com.fadghost.notesapp.data.db.dao.MemoryDao
 import com.fadghost.notesapp.data.db.dao.NoteDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.dao.TagDao
@@ -21,6 +22,8 @@ import com.fadghost.notesapp.data.db.entity.AudioAttachment
 import com.fadghost.notesapp.data.db.entity.DiaryEntry
 import com.fadghost.notesapp.data.db.entity.Event
 import com.fadghost.notesapp.data.db.entity.Folder
+import com.fadghost.notesapp.data.db.entity.MemoryEntry
+import com.fadghost.notesapp.data.db.entity.MemoryLink
 import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.db.entity.NoteTagCrossRef
 import com.fadghost.notesapp.data.db.entity.Reminder
@@ -38,9 +41,11 @@ import com.fadghost.notesapp.data.db.entity.Tag
         AiCallCost::class,
         CachedModel::class,
         AudioAttachment::class,
-        Attachment::class
+        Attachment::class,
+        MemoryEntry::class,
+        MemoryLink::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -55,15 +60,17 @@ abstract class NotesDatabase : RoomDatabase() {
     abstract fun cachedModelDao(): CachedModelDao
     abstract fun audioAttachmentDao(): AudioAttachmentDao
     abstract fun attachmentDao(): AttachmentDao
+    abstract fun memoryDao(): MemoryDao
 
     companion object {
         const val NAME = "notes.db"
 
-        /** Creates the FTS4 search index on first run (framework SQLite has no fts5). */
+        /** Creates the FTS4 search indexes on first run (framework SQLite has no fts5). */
         val CALLBACK: Callback = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)
                 NotesFts.create(db)
+                MemoryFts.create(db)
             }
         }
     }

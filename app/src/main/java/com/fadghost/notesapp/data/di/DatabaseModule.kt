@@ -8,6 +8,7 @@ import com.fadghost.notesapp.data.db.MIGRATION_3_4
 import com.fadghost.notesapp.data.db.MIGRATION_4_5
 import com.fadghost.notesapp.data.db.MIGRATION_5_6
 import com.fadghost.notesapp.data.db.MIGRATION_6_7
+import com.fadghost.notesapp.data.db.MIGRATION_7_8
 import com.fadghost.notesapp.data.db.NotesDatabase
 import com.fadghost.notesapp.data.db.dao.AiCostDao
 import com.fadghost.notesapp.data.db.dao.AttachmentDao
@@ -16,6 +17,7 @@ import com.fadghost.notesapp.data.db.dao.CachedModelDao
 import com.fadghost.notesapp.data.db.dao.DiaryDao
 import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.FolderDao
+import com.fadghost.notesapp.data.db.dao.MemoryDao
 import com.fadghost.notesapp.data.db.dao.NoteDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.dao.TagDao
@@ -36,7 +38,8 @@ object DatabaseModule {
         Room.databaseBuilder(context, NotesDatabase::class.java, NotesDatabase.NAME)
             .addCallback(NotesDatabase.CALLBACK)
             .addMigrations(
-                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
+                MIGRATION_6_7, MIGRATION_7_8
             )
             .build()
 
@@ -69,4 +72,7 @@ object DatabaseModule {
 
     @Provides
     fun provideAttachmentDao(db: NotesDatabase): AttachmentDao = db.attachmentDao()
+
+    @Provides
+    fun provideMemoryDao(db: NotesDatabase): MemoryDao = db.memoryDao()
 }
