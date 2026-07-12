@@ -49,6 +49,7 @@ import com.fadghost.notesapp.data.ai.parse.ProposedAction
 import com.fadghost.notesapp.ui.components.AuraDateTimePicker
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import kotlinx.coroutines.launch
@@ -113,8 +114,11 @@ fun ExtractSheet(
 
                     when {
                         state.loading -> Loading()
-                        state.error != null -> BasicText(state.error, style = AuraType.body.copy(color = tokens.colors.danger))
-                        state.rawError != null -> RawErrorBlock(state.rawError)
+                        state.error != null || state.rawError != null -> ErrorBlock(
+                            friendly = state.error,
+                            raw = state.rawError,
+                            onRetry = onDismiss
+                        )
                         state.cards.isEmpty() -> BasicText(
                             if (state.acceptedCount > 0) "All set — ${state.acceptedCount} added."
                             else "No actions found in this note.",
@@ -325,13 +329,15 @@ private fun TypeBadge(type: ActionType) {
 @Composable
 private fun CardAction(glyph: Glyph, color: Color, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(38.dp)
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(interaction)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { AuraGlyph(glyph, color, Modifier.size(18.dp)) }
 }
@@ -339,12 +345,14 @@ private fun CardAction(glyph: Glyph, color: Color, onClick: () -> Unit) {
 @Composable
 private fun TextAction(label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp)
     ) { BasicText(label, style = AuraType.label.copy(color = tokens.colors.textPrimary)) }
 }
@@ -355,23 +363,47 @@ private fun WarningLine(text: String) {
     BasicText("• $text", style = AuraType.label.copy(color = tokens.colors.textSecondary))
 }
 
+/**
+ * Friendly-first error state (ux.md P1-9). Leads with plain-language copy and a
+ * Retry action; the raw/technical detail is tucked behind a collapsed "Show details"
+ * disclosure so it never dumps on the user by default.
+ */
 @Composable
-private fun RawErrorBlock(raw: String) {
+private fun ErrorBlock(friendly: String?, raw: String?, onRetry: () -> Unit) {
     val tokens = Aura.tokens
+    var showDetails by remember { mutableStateOf(false) }
     Column {
-        BasicText("Couldn't parse the model's reply. Raw output:", style = AuraType.label.copy(color = tokens.colors.danger))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AuraGlyph(Glyph.CLOSE, tokens.colors.danger, Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            BasicText("That didn't work", style = AuraType.body.copy(color = tokens.colors.textPrimary))
+        }
         Spacer(Modifier.size(6.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = 200.dp)
-                .clip(RoundedCornerShape(tokens.radii.sm))
-                .background(tokens.colors.background)
-                .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
-                .verticalScroll(rememberScrollState())
-                .padding(12.dp)
-        ) {
-            BasicText(raw, style = AuraType.label.copy(color = tokens.colors.textSecondary))
+        BasicText(
+            friendly ?: "I couldn't pull actions from this note just now. Give it another try.",
+            style = AuraType.label.copy(color = tokens.colors.textSecondary)
+        )
+        Spacer(Modifier.size(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            SoftButton("Retry", filled = true, onClick = onRetry)
+            if (raw != null) {
+                TextAction(if (showDetails) "Hide details" else "Show details") { showDetails = !showDetails }
+            }
+        }
+        if (showDetails && raw != null) {
+            Spacer(Modifier.size(10.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .clip(RoundedCornerShape(tokens.radii.sm))
+                    .background(tokens.colors.background)
+                    .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
+                    .verticalScroll(rememberScrollState())
+                    .padding(12.dp)
+            ) {
+                BasicText(raw, style = AuraType.label.copy(color = tokens.colors.textSecondary))
+            }
         }
     }
 }

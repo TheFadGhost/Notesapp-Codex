@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 
@@ -115,14 +116,16 @@ fun SoftButton(
     val tokens = Aura.tokens
     val bg = if (filled) tokens.colors.accent else tokens.colors.surface
     val fg = if (filled) tokens.colors.background else tokens.colors.textPrimary
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .height(42.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(bg)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

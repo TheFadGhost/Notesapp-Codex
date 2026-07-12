@@ -45,15 +45,17 @@ fun TagChip(tag: Tag, selected: Boolean, onClick: (() -> Unit)? = null) {
     val tokens = Aura.tokens
     val dot = AuraAccents.resolve(tag.color, tokens.colors.accent)
     val bg = if (selected) dot.copy(alpha = 0.18f) else tokens.colors.surface
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
             .height(36.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .then(if (onClick != null) Modifier.auraPress(interaction) else Modifier)
             .background(bg)
             .border(1.dp, if (selected) dot else tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .then(
                 if (onClick != null) Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = interaction,
                     indication = null,
                     onClick = onClick
                 ) else Modifier
@@ -73,14 +75,16 @@ fun PlainChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val bg = if (selected) tokens.colors.accent.copy(alpha = 0.9f) else tokens.colors.surface
     val fg = if (selected) lerp(tokens.colors.textPrimary, tokens.colors.background, 0.9f) else tokens.colors.textSecondary
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .height(36.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(bg)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

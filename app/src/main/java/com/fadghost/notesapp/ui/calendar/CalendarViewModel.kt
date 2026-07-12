@@ -8,9 +8,12 @@ import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.entity.Event
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.data.db.entity.Reminder
+import com.fadghost.notesapp.ui.components.UndoMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -39,6 +42,14 @@ class CalendarViewModel @Inject constructor(
         combine(eventDao.observeAll(), reminderDao.observeAll()) { events, reminders ->
             CalendarData(events, reminders)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarData())
+
+    // --- Universal undo snackbar for deletes (ux.md P1-6) -----------------------
+    // No soft-delete exists for events/reminders (the DAOs only hard-delete via
+    // deleteById), so we capture the full row before removing it and re-insert it
+    // through the existing REPLACE upsert on undo — preserving its id and relations.
+    private val _snackbar = MutableStateFlow<UndoMessage?>(null)
+    val snackbar: StateFlow<UndoMessage?> = _snackbar.asStateFlow()
+    private var pendingUndo: (suspend () -> Unit)? = null
 
     fun canScheduleExact(): Boolean = alarmScheduler.canExact()
 
@@ -69,7 +80,13 @@ class CalendarViewModel @Inject constructor(
     }
 
     fun deleteEvent(baseId: Long) {
-        viewModelScope.launch { eventDao.deleteById(baseId) }
+        viewModelScope.launch {
+            val existing = eventDao.getById(baseId)
+            eventDao.deleteById(baseId)
+            if (existing != null) {
+                offerUndo("Event deleted") { eventDao.upsert(existing) }
+            }
+        }
     }
 
     // --- Reminders --------------------------------------------------------------
@@ -100,8 +117,15 @@ class CalendarViewModel @Inject constructor(
 
     fun deleteReminder(baseId: Long) {
         viewModelScope.launch {
+            val existing = reminderDao.getById(baseId)
             alarmScheduler.cancelReminder(baseId)
             reminderDao.deleteById(baseId)
+            if (existing != null) {
+                offerUndo("Reminder deleted") {
+                    reminderDao.upsert(existing)
+                    if (!existing.done) alarmScheduler.scheduleReminder(existing)
+                }
+            }
         }
     }
 
@@ -114,5 +138,24 @@ class CalendarViewModel @Inject constructor(
                 reminderDao.getById(baseId)?.let { alarmScheduler.scheduleReminder(it) }
             }
         }
+    }
+
+    // --- Undo plumbing ----------------------------------------------------------
+
+    private fun offerUndo(text: String, undo: suspend () -> Unit) {
+        pendingUndo = undo
+        _snackbar.value = UndoMessage(text)
+    }
+
+    fun undoDelete() {
+        val action = pendingUndo ?: return
+        pendingUndo = null
+        _snackbar.value = null
+        viewModelScope.launch { action() }
+    }
+
+    fun dismissSnackbar() {
+        pendingUndo = null
+        _snackbar.value = null
     }
 }

@@ -26,7 +26,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.components.AuraGlyph
+import com.fadghost.notesapp.ui.components.AuraToggle
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraSheetShadow
@@ -50,9 +52,9 @@ import com.fadghost.notesapp.ui.theme.auraSheetShadow
 @Composable
 fun DiarySettingsSection(viewModel: DiarySettingsViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
-    val biometric by viewModel.biometricEnabled.collectAsState()
-    val nudgeOn by viewModel.nudgeEnabled.collectAsState()
-    val nudgeTime by viewModel.nudgeTime.collectAsState()
+    val biometric by viewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val nudgeOn by viewModel.nudgeEnabled.collectAsStateWithLifecycle()
+    val nudgeTime by viewModel.nudgeTime.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val notificationsGranted = remember(nudgeOn) {
@@ -104,11 +106,13 @@ private fun ToggleRow(
     onToggle: (Boolean) -> Unit
 ) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = { onToggle(!checked) }
             )
@@ -120,43 +124,7 @@ private fun ToggleRow(
             BasicText(subtitle, style = AuraType.label.copy(color = tokens.colors.textSecondary))
         }
         Spacer(Modifier.width(12.dp))
-        AuraToggle(checked = checked, onToggle = onToggle)
-    }
-}
-
-/** Custom Aura on/off switch — pill track + spring knob (no Material Switch). */
-@Composable
-private fun AuraToggle(checked: Boolean, onToggle: (Boolean) -> Unit) {
-    val tokens = Aura.tokens
-    val t by animateFloatAsState(
-        if (checked) 1f else 0f,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "toggle"
-    )
-    val trackW = 46.dp
-    val knob = 22.dp
-    val knobX by animateDpAsState(if (checked) trackW - knob - 3.dp else 3.dp, label = "knob")
-    val track = lerp(tokens.colors.textSecondary.copy(alpha = 0.35f), tokens.colors.accent, t)
-    Box(
-        Modifier
-            .width(trackW)
-            .height(28.dp)
-            .clip(RoundedCornerShape(tokens.radii.pill))
-            .background(track)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { onToggle(!checked) }
-            ),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Box(
-            Modifier
-                .padding(start = knobX)
-                .size(knob)
-                .clip(RoundedCornerShape(tokens.radii.pill))
-                .background(tokens.colors.surface)
-        )
+        AuraToggle(checked = checked, onCheckedChange = onToggle)
     }
 }
 
@@ -204,12 +172,14 @@ private fun Field(label: String, display: String, onUp: () -> Unit, onDown: () -
 @Composable
 private fun StepBtn(glyph: Glyph, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(width = 56.dp, height = 30.dp)
+            .size(width = 56.dp, height = 44.dp)
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),

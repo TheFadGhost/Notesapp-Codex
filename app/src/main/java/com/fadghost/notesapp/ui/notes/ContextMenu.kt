@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 
@@ -91,14 +92,16 @@ private fun MenuRow(item: ContextMenuItem, index: Int, onDismiss: () -> Unit) {
         appear.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
     }
     val color = if (item.danger) tokens.colors.danger else tokens.colors.textPrimary
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .graphicsLayer {
                 alpha = appear.value
                 translationX = (1f - appear.value) * -24f
             }
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = { item.onClick(); onDismiss() }
             )

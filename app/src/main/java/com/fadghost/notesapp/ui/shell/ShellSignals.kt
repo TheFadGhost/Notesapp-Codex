@@ -19,10 +19,25 @@ object ShellSignals {
     private val _flow = MutableSharedFlow<Msg>(extraBufferCapacity = 8)
     val flow: SharedFlow<Msg> = _flow.asSharedFlow()
 
+    /**
+     * A note the editor just soft-deleted (P0-2). The editor exits silently; the Notes
+     * list — the one place with the universal undo snackbar — picks this up and offers
+     * the same "Moved to Trash · Undo" it shows for its own swipe/menu deletes, so the
+     * one code path (repo already soft-deleted) surfaces undo without duplicating it.
+     */
+    data class DeletedMsg(val noteId: Long, val nonce: Long)
+
+    private val _deleted = MutableSharedFlow<DeletedMsg>(extraBufferCapacity = 4)
+    val deleted: SharedFlow<DeletedMsg> = _deleted.asSharedFlow()
+
     private var nonce = 0L
 
     fun send(tab: NavTab, signal: ShellSignal) {
         _flow.tryEmit(Msg(tab, signal, nonce++))
+    }
+
+    fun noteDeleted(id: Long) {
+        _deleted.tryEmit(DeletedMsg(id, nonce++))
     }
 }
 

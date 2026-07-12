@@ -115,12 +115,14 @@ private fun StepperColumn(
 @Composable
 private fun StepButton(glyph: Glyph, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(width = 48.dp, height = 30.dp)
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),

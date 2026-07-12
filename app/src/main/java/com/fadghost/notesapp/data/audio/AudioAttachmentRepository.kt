@@ -23,6 +23,9 @@ class AudioAttachmentRepository @Inject constructor(
     fun observeForNote(noteId: Long): Flow<List<AudioAttachment>> = dao.observeForNote(noteId)
     fun observeTotalBytes(): Flow<Long> = dao.observeTotalBytes()
 
+    /** One-shot read of a note's attachments (drives the M2 commit idempotency check). */
+    suspend fun forNote(noteId: Long): List<AudioAttachment> = dao.forNote(noteId)
+
     fun noteDir(noteId: Long): File = AudioStorage.noteDir(context.filesDir, noteId)
 
     /**

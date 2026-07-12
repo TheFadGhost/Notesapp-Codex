@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 
@@ -119,12 +120,14 @@ fun DiaryBiometricGate(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
                 style = AuraType.body.copy(color = tokens.colors.textSecondary, textAlign = TextAlign.Center)
             )
             Spacer(Modifier.height(24.dp))
+            val unlockInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(unlockInteraction, tint = true)
                     .background(tokens.colors.accent)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = unlockInteraction,
                         indication = null,
                         onClick = { authenticate() }
                     )

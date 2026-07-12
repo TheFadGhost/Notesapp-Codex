@@ -26,7 +26,8 @@ import androidx.compose.ui.unit.dp
 enum class Glyph {
     PIN, ARCHIVE, TRASH, DUPLICATE, FOLDER, TAG, SEARCH, CLOSE, GRID, LIST,
     BOLD, ITALIC, HEADING, CHECKLIST, BULLET, UNDO, REDO, RESTORE, CHECK, PLUS,
-    CHEVRON, BACK, MORE, SPARKLE, CALENDAR, CLOCK, CHEVRON_UP, CHEVRON_DOWN
+    CHEVRON, BACK, MORE, SPARKLE, CALENDAR, CLOCK, CHEVRON_UP, CHEVRON_DOWN,
+    DOCUMENT, BOOK, MIC
 }
 
 @Composable
@@ -64,8 +65,54 @@ fun AuraGlyph(glyph: Glyph, color: Color, modifier: Modifier = Modifier) {
             Glyph.CLOCK -> drawClock(color, s, st)
             Glyph.CHEVRON_UP -> drawChevronVert(color, s, st, up = true)
             Glyph.CHEVRON_DOWN -> drawChevronVert(color, s, st, up = false)
+            Glyph.DOCUMENT -> drawDocument(color, s, st)
+            Glyph.BOOK -> drawBook(color, s, st)
+            Glyph.MIC -> drawMic(color, s, st)
         }
     }
+}
+
+/** A page with a folded corner + a couple of text lines (capture: New note). */
+private fun DrawScope.drawDocument(c: Color, s: Float, st: Stroke) {
+    val page = Path().apply {
+        moveTo(s * 0.30f, s * 0.22f)
+        lineTo(s * 0.58f, s * 0.22f)
+        lineTo(s * 0.70f, s * 0.34f)
+        lineTo(s * 0.70f, s * 0.78f)
+        lineTo(s * 0.30f, s * 0.78f)
+        close()
+    }
+    drawPath(page, c, style = st)
+    // Folded corner.
+    val fold = Path().apply {
+        moveTo(s * 0.58f, s * 0.22f)
+        lineTo(s * 0.58f, s * 0.34f)
+        lineTo(s * 0.70f, s * 0.34f)
+    }
+    drawPath(fold, c, style = st)
+    line(c, s * 0.38f, s * 0.52f, s * 0.62f, s * 0.52f, st)
+    line(c, s * 0.38f, s * 0.64f, s * 0.62f, s * 0.64f, st)
+}
+
+/** A closed book with a spine (capture: New diary entry). */
+private fun DrawScope.drawBook(c: Color, s: Float, st: Stroke) {
+    roundRect(c, s * 0.28f, s * 0.22f, s * 0.44f, s * 0.56f, s, st)
+    line(c, s * 0.40f, s * 0.24f, s * 0.40f, s * 0.76f, st)
+    line(c, s * 0.50f, s * 0.34f, s * 0.64f, s * 0.34f, st)
+    line(c, s * 0.50f, s * 0.46f, s * 0.64f, s * 0.46f, st)
+}
+
+/** A capsule mic + stand (capture: Voice ramble). */
+private fun DrawScope.drawMic(c: Color, s: Float, st: Stroke) {
+    roundRect(c, s * 0.40f, s * 0.22f, s * 0.20f, s * 0.34f, s, st)
+    // Cradle arc.
+    val cradle = Path().apply {
+        moveTo(s * 0.32f, s * 0.48f)
+        cubicTo(s * 0.32f, s * 0.66f, s * 0.68f, s * 0.66f, s * 0.68f, s * 0.48f)
+    }
+    drawPath(cradle, c, style = st)
+    line(c, s * 0.50f, s * 0.66f, s * 0.50f, s * 0.78f, st)
+    line(c, s * 0.40f, s * 0.78f, s * 0.60f, s * 0.78f, st)
 }
 
 /** 2-unit corner radius on the 24-unit grid. */

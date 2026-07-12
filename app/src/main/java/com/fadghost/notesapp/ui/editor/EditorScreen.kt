@@ -1,6 +1,7 @@
 package com.fadghost.notesapp.ui.editor
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,12 +51,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.TagChip
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.util.UndoStack
+import kotlinx.coroutines.launch
 
 /**
  * Markdown editor (PLAN.md §6): live-styled body, sticky toolbar, smart lists,
@@ -67,6 +72,7 @@ fun EditorScreen(
     noteId: Long,
     onExit: () -> Unit,
     restoreDraft: com.fadghost.notesapp.data.prefs.DraftSnapshot? = null,
+    onDeleted: (Long) -> Unit = { onExit() },
     onOpenAiSettings: () -> Unit = {},
     viewModel: EditorViewModel = hiltViewModel(),
     aiViewModel: com.fadghost.notesapp.ui.ai.EditorAiViewModel = hiltViewModel(),
@@ -74,22 +80,22 @@ fun EditorScreen(
     voiceViewModel: com.fadghost.notesapp.ui.voice.VoiceRecordViewModel = hiltViewModel()
 ) {
     val tokens = Aura.tokens
-    val state by viewModel.state.collectAsState()
-    val folders by viewModel.folders.collectAsState()
-    val allTags by viewModel.allTags.collectAsState()
-    val noteTags by viewModel.noteTags.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val allTags by viewModel.allTags.collectAsStateWithLifecycle()
+    val noteTags by viewModel.noteTags.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     val focus = LocalFocusManager.current
     val bodyFocus = remember { FocusRequester() }
 
-    val hasKey by aiViewModel.hasKey.collectAsState()
-    val cleanupState by aiViewModel.cleanup.collectAsState()
-    val extractState by aiViewModel.extract.collectAsState()
-    val aiSnackbar by aiViewModel.snackbar.collectAsState()
-    val autoCleanTranscript by aiViewModel.autoCleanTranscript.collectAsState()
-    val queuedResult by remember(state.noteId) { aiViewModel.pendingQueuedCleanup(state.noteId) }.collectAsState()
+    val hasKey by aiViewModel.hasKey.collectAsStateWithLifecycle()
+    val cleanupState by aiViewModel.cleanup.collectAsStateWithLifecycle()
+    val extractState by aiViewModel.extract.collectAsStateWithLifecycle()
+    val aiSnackbar by aiViewModel.snackbar.collectAsStateWithLifecycle()
+    val autoCleanTranscript by aiViewModel.autoCleanTranscript.collectAsStateWithLifecycle()
+    val queuedResult by remember(state.noteId) { aiViewModel.pendingQueuedCleanup(state.noteId) }.collectAsStateWithLifecycle()
 
-    val audioChips by audioViewModel.chips.collectAsState()
+    val audioChips by audioViewModel.chips.collectAsStateWithLifecycle()
     var showVoiceSheet by remember { mutableStateOf(false) }
     var voiceTargetNoteId by remember { mutableStateOf(0L) }
     var openPlayer by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.AudioAttachment?>(null) }
@@ -103,6 +109,16 @@ fun EditorScreen(
     var showPicker by remember { mutableStateOf(false) }
     var showNoKey by remember { mutableStateOf(false) }
     var bodyLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    // One-time coach tip labelling the three AI icons (P1-3), DataStore-gated.
+    val context = LocalContext.current
+    val coachStore = remember { EditorCoachStore(context) }
+    val coachScope = rememberCoroutineScope()
+    val coachSeen by coachStore.seen.collectAsStateWithLifecycle(initialValue = true)
+    var coachVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(coachSeen, state.loaded) {
+        if (state.loaded && EditorCoachGate.shouldShow(coachSeen)) coachVisible = true
+    }
 
     // Seed the fields once the VM has loaded (also runs after process death).
     LaunchedEffect(state.loaded, state.noteId) {
@@ -189,9 +205,18 @@ fun EditorScreen(
                 ) { showPicker = true }
                 Spacer(Modifier.width(8.dp))
                 PillAction(glyph = Glyph.TAG, label = "Tags") { showPicker = true }
-                Spacer(Modifier.width(8.dp))
-                IconAction(Glyph.TRASH) {
-                    viewModel.deleteNote { onExit() }
+                // Keep the destructive trash well clear of the Tags pill (P0-2): a wide
+                // gap + a hairline divider so it can't be fat-fingered for "Tags".
+                Spacer(Modifier.width(14.dp))
+                Box(
+                    Modifier
+                        .height(24.dp)
+                        .width(1.dp)
+                        .background(tokens.colors.outline)
+                )
+                Spacer(Modifier.width(6.dp))
+                IconAction(Glyph.TRASH, tint = tokens.colors.danger) {
+                    viewModel.deleteNote { id -> onDeleted(id) }
                 }
             }
 
@@ -343,6 +368,19 @@ fun EditorScreen(
             }
         }
 
+        // First-open coach tip labelling the three AI icons (P1-3).
+        EditorCoachTip(
+            visible = coachVisible,
+            onDismiss = {
+                coachVisible = false
+                coachScope.launch { coachStore.markSeen() }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 52.dp)
+        )
+
         // ✨ Clean-up before/after sheet.
         com.fadghost.notesapp.ui.ai.CleanupSheet(
             state = cleanupState,
@@ -411,12 +449,14 @@ fun EditorScreen(
 @Composable
 private fun MicAction(tint: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),
@@ -462,25 +502,29 @@ private fun QueuedResultBanner(
             BasicText("AI cleanup ready", style = AuraType.body.copy(color = tokens.colors.textPrimary))
             BasicText("Ran while you were offline", style = AuraType.label.copy(color = tokens.colors.textSecondary))
         }
+        val applyInteraction = remember { MutableInteractionSource() }
         BasicText(
             "Apply",
             style = AuraType.label.copy(color = tokens.colors.accent),
             modifier = Modifier
                 .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(applyInteraction)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = applyInteraction,
                     indication = null,
                     onClick = onApply
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         )
+        val dismissInteraction = remember { MutableInteractionSource() }
         BasicText(
             "Dismiss",
             style = AuraType.label.copy(color = tokens.colors.textSecondary),
             modifier = Modifier
                 .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(dismissInteraction)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = dismissInteraction,
                     indication = null,
                     onClick = onDismiss
                 )
@@ -504,10 +548,14 @@ private fun CheckboxOverlay(
     val rects = remember(text, layoutResult) { checkboxRects(text, layoutResult) }
     rects.forEach { (offset, rect) ->
         with(density) {
+            // P2-1: expand the marker hit-box to a centred 48dp target.
+            val target = 48.dp
+            val cx = rect.left + rect.width / 2f
+            val cy = rect.top + rect.height / 2f
             Box(
                 Modifier
-                    .offset(x = rect.left.toDp(), y = rect.top.toDp())
-                    .size(width = (rect.width).toDp() + 8.dp, height = (rect.height).toDp())
+                    .offset(x = cx.toDp() - target / 2, y = cy.toDp() - target / 2)
+                    .size(target)
                     .pointerInput(offset) {
                         detectTapGestures { onToggle(offset) }
                     }
@@ -548,12 +596,14 @@ private fun IconAction(
     onClick: () -> Unit
 ) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(40.dp)
+            .size(48.dp) // P2-1: comfortable 48dp touch target.
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),
@@ -566,12 +616,15 @@ private fun IconAction(
 @Composable
 private fun PillAction(glyph: Glyph, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.surface)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )
@@ -581,5 +634,69 @@ private fun PillAction(glyph: Glyph, label: String, onClick: () -> Unit) {
         AuraGlyph(glyph, tokens.colors.textSecondary, Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         BasicText(label, style = AuraType.label.copy(color = tokens.colors.textPrimary))
+    }
+}
+
+/** First-open coach card labelling the three AI icons — Clean-up / Extract / Voice. */
+@Composable
+private fun EditorCoachTip(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (!visible) return
+    val tokens = Aura.tokens
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(tokens.radii.md))
+            .background(tokens.colors.surfaceTranslucent)
+            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        BasicText("QUICK TOUR", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
+        Spacer(Modifier.height(10.dp))
+        CoachRow(Glyph.SPARKLE, "Clean-up", "Tidy grammar & formatting")
+        Spacer(Modifier.height(8.dp))
+        CoachRow(Glyph.CALENDAR, "Extract", "Pull out reminders & dates")
+        Spacer(Modifier.height(8.dp))
+        CoachRow(Glyph.MIC, "Voice", "Ramble; we transcribe it")
+        Spacer(Modifier.height(12.dp))
+        val interaction = remember { MutableInteractionSource() }
+        Box(
+            Modifier
+                .align(Alignment.End)
+                .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(interaction, tint = true)
+                .background(tokens.colors.accent)
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onDismiss
+                )
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+        ) {
+            BasicText("Got it", style = AuraType.label.copy(color = tokens.colors.background))
+        }
+    }
+}
+
+@Composable
+private fun CoachRow(glyph: Glyph, title: String, subtitle: String) {
+    val tokens = Aura.tokens
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(tokens.radii.pill))
+                .background(tokens.colors.accent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) { AuraGlyph(glyph, tokens.colors.accent, Modifier.size(18.dp)) }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            BasicText(title, style = AuraType.body.copy(color = tokens.colors.textPrimary))
+            BasicText(subtitle, style = AuraType.label.copy(color = tokens.colors.textSecondary))
+        }
     }
 }

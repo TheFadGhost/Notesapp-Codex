@@ -40,6 +40,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.fadghost.notesapp.ui.components.AuraGlyph
+import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
@@ -48,6 +51,15 @@ import com.fadghost.notesapp.ui.theme.MotionTokens
 import kotlinx.coroutines.launch
 
 data class CaptureAction(val label: String, val subtitle: String)
+
+/** Distinct glyph per capture action (P1-2 — no more four identical "+" icons). */
+private fun glyphForAction(label: String): Glyph = when (label) {
+    "New note" -> Glyph.DOCUMENT
+    "New diary entry" -> Glyph.BOOK
+    "Voice ramble" -> Glyph.MIC
+    "Quick reminder" -> Glyph.CLOCK
+    else -> Glyph.PLUS
+}
 
 private val captureActions = listOf(
     CaptureAction("New note", "Blank markdown note"),
@@ -94,6 +106,14 @@ fun ContextualFab(
         if (reduceMotion) tween(0) else tween(200),
         label = "fabRotate"
     )
+    // Shared Aura press feedback — detectTapGestures drives a pressed flag (it has no
+    // InteractionSource), honouring reduce-motion like [auraPress] elsewhere.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(
+        if (pressed && !reduceMotion) 0.94f else 1f,
+        tween(if (reduceMotion) 0 else 100),
+        label = "fabPress"
+    )
 
     Box(
         modifier = modifier
@@ -101,6 +121,8 @@ fun ContextualFab(
             .graphicsLayer {
                 translationX = hideX
                 alpha = fabAlpha
+                scaleX = pressScale
+                scaleY = pressScale
             }
             .clip(CircleShape)
             .background(tokens.colors.accent)
@@ -108,6 +130,7 @@ fun ContextualFab(
             .pointerInput(Unit) {
                 // Tap = contextual primary; long-press = full capture panel.
                 detectTapGestures(
+                    onPress = { pressed = true; tryAwaitRelease(); pressed = false },
                     onTap = { haptics.confirm(); onPrimary() },
                     onLongPress = { haptics.confirm(); onLongPress() }
                 )
@@ -246,11 +269,13 @@ private fun ActionRow(
     onClick: () -> Unit
 ) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )
@@ -266,7 +291,7 @@ private fun ActionRow(
                 .background(tokens.colors.accent.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center
         ) {
-            PlusGlyph(color = tokens.colors.accent, modifier = Modifier.size(20.dp))
+            AuraGlyph(glyphForAction(action.label), tokens.colors.accent, Modifier.size(20.dp))
         }
         Column {
             BasicText(

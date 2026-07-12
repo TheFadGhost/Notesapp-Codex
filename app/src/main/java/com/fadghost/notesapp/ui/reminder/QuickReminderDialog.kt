@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.ai.SoftButton
@@ -104,13 +105,32 @@ fun QuickReminderDialog(
                     }
                     Spacer(Modifier.size(16.dp))
                     AuraDateTimePicker(value = dt, onChange = { dt = it })
+
+                    val whenMillis = dt.atZone(zone).toInstant().toEpochMilli()
+                    val validation = QuickReminderViewModel.validate(title, whenMillis, System.currentTimeMillis())
+                    val canCreate = validation == ReminderValidation.Ok
+                    if (validation == ReminderValidation.PastTime) {
+                        Spacer(Modifier.size(10.dp))
+                        BasicText(
+                            "That time has already passed — pick a time in the future.",
+                            style = AuraType.bodySm.copy(color = tokens.colors.danger)
+                        )
+                    }
+
                     Spacer(Modifier.size(20.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SoftButton("Cancel", filled = false, onClick = onDismiss)
                         Spacer(Modifier.weight(1f))
-                        SoftButton("Create", filled = true, onClick = {
-                            viewModel.create(title, dt.atZone(zone).toInstant().toEpochMilli()) { onCreated() }
-                        })
+                        SoftButton(
+                            "Create",
+                            filled = true,
+                            modifier = Modifier.graphicsLayer { alpha = if (canCreate) 1f else 0.4f },
+                            onClick = {
+                                if (canCreate) {
+                                    viewModel.create(title, whenMillis) { onCreated() }
+                                }
+                            }
+                        )
                     }
                 }
             }

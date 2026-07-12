@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.components.PlainChip
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 
@@ -72,14 +73,16 @@ private fun TagFilterChip(label: String, selected: Boolean, onClick: () -> Unit,
     val tokens = Aura.tokens
     val bg = if (selected) tokens.colors.accent.copy(alpha = 0.9f) else tokens.colors.surface
     val fg = if (selected) lerp(tokens.colors.textPrimary, tokens.colors.background, 0.9f) else tokens.colors.textSecondary
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .height(36.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(bg)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick

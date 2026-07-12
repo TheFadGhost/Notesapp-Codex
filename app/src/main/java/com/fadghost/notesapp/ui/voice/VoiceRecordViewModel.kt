@@ -17,12 +17,17 @@ import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.repo.NotesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import kotlin.math.sqrt
@@ -69,6 +74,14 @@ class VoiceRecordViewModel @Inject constructor(
     private var recorder: AudioRecorder? = null
     private var tickJob: Job? = null
     private var pipelineJob: Job? = null
+
+    /**
+     * Serialises every [MediaRecorder] lifecycle call (start/stop/pause/resume and the
+     * segment rollover) so a rollover from the amplitude ticker can never race the
+     * user's stop/discard on the recorder (audit M4). Recorder calls run on
+     * [Dispatchers.IO]; only the amplitude/timer sampling stays on the main thread.
+     */
+    private val recorderLock = Mutex()
     private var noteId = 0L
     private var appendMode = false
     private var createdEmptyNote = false
@@ -111,13 +124,18 @@ class VoiceRecordViewModel @Inject constructor(
         wantStart = false
         val rec = AudioRecorder(context, attachments.noteDir(resolveNoteId()))
         recorder = rec
-        runCatching { rec.start() }
-            .onFailure {
-                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Couldn't start recording.")
-                return
+        viewModelScope.launch {
+            // prepare()/start() are blocking MediaRecorder calls — keep them off Main.
+            val started = withContext(Dispatchers.IO) {
+                recorderLock.withLock { runCatching { rec.start() }.isSuccess }
             }
-        _state.value = _state.value.copy(phase = VoicePhase.RECORDING, paused = false, elapsedMs = 0, amplitudes = emptyList())
-        startTicking()
+            if (!started) {
+                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Couldn't start recording.")
+                return@launch
+            }
+            _state.value = _state.value.copy(phase = VoicePhase.RECORDING, paused = false, elapsedMs = 0, amplitudes = emptyList())
+            startTicking()
+        }
     }
 
     fun onPermissionDenied() {
@@ -126,25 +144,37 @@ class VoiceRecordViewModel @Inject constructor(
 
     fun togglePause() {
         val rec = recorder ?: return
-        if (rec.isPaused) { rec.resume(); _state.value = _state.value.copy(paused = false) }
-        else { rec.pause(); _state.value = _state.value.copy(paused = true) }
+        viewModelScope.launch {
+            val nowPaused = withContext(Dispatchers.IO) {
+                recorderLock.withLock {
+                    if (rec.isPaused) { rec.resume(); false } else { rec.pause(); true }
+                }
+            }
+            _state.value = _state.value.copy(paused = nowPaused)
+        }
     }
 
     /** Stop capture and run (or queue) transcription. */
     fun stop() {
         val rec = recorder ?: return
         tickJob?.cancel()
-        val segments = runCatching { rec.stop() }.getOrDefault(emptyList())
-        if (segments.isEmpty()) {
-            _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Nothing was recorded.")
-            return
+        viewModelScope.launch {
+            // stop() finalises the current segment (recorder.stop/release) — off Main and
+            // under the lock so it can't collide with an in-flight rollover (audit M4).
+            val segments = withContext(Dispatchers.IO) {
+                recorderLock.withLock { runCatching { rec.stop() }.getOrDefault(emptyList()) }
+            }
+            if (segments.isEmpty()) {
+                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Nothing was recorded.")
+                return@launch
+            }
+            if (!connectivity.isOnline()) {
+                TranscribeQueueWorker.enqueue(context, resolveNoteId(), segments)
+                _state.value = _state.value.copy(phase = VoicePhase.QUEUED, segments = segments)
+                return@launch
+            }
+            runTranscription(segments)
         }
-        if (!connectivity.isOnline()) {
-            TranscribeQueueWorker.enqueue(context, resolveNoteId(), segments)
-            _state.value = _state.value.copy(phase = VoicePhase.QUEUED, segments = segments)
-            return
-        }
-        runTranscription(segments)
     }
 
     private fun runTranscription(segments: List<RecordedSegment>) {
@@ -200,11 +230,13 @@ class VoiceRecordViewModel @Inject constructor(
     /** Discard the recording (and the empty note if we created one). */
     fun discard() {
         cancelJobs()
-        runCatching { recorder?.discard() }
+        val rec = recorder
         recorder = null
-        if (createdEmptyNote) {
-            val id = noteId
-            viewModelScope.launch { runCatching { if (id > 0) notes.hardDeleteIfEmpty(id) } }
+        val id = noteId
+        val hadEmptyNote = createdEmptyNote
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { recorderLock.withLock { runCatching { rec?.discard() } } }
+            if (hadEmptyNote && id > 0) runCatching { notes.hardDeleteIfEmpty(id) }
         }
         _state.value = VoiceUiState(phase = VoicePhase.REQUEST_PERMISSION)
     }
@@ -221,7 +253,9 @@ class VoiceRecordViewModel @Inject constructor(
             while (true) {
                 val rec = recorder ?: break
                 if (!rec.isPaused) {
-                    rec.maybeRollover()
+                    // Rollover finalises/starts a segment — run it off Main under the lock
+                    // (audit M4). The amplitude/timer sampling below stays on Main.
+                    withContext(Dispatchers.IO) { recorderLock.withLock { rec.maybeRollover() } }
                     val amp = normalize(rec.amplitude())
                     val next = (_state.value.amplitudes + amp).takeLast(MAX_SAMPLES)
                     _state.value = _state.value.copy(elapsedMs = rec.totalElapsedMs(), amplitudes = next)
@@ -262,7 +296,12 @@ class VoiceRecordViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         cancelJobs()
-        runCatching { recorder?.stop() }
+        val rec = recorder
+        recorder = null
+        // viewModelScope is cancelled by now; best-effort stop off Main on a detached scope.
+        CoroutineScope(Dispatchers.IO).launch {
+            recorderLock.withLock { runCatching { rec?.stop() } }
+        }
     }
 
     private companion object {

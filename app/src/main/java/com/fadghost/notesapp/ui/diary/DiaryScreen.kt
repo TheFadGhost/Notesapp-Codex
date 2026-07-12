@@ -10,14 +10,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -37,7 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.db.entity.DiaryEntry
 import com.fadghost.notesapp.ui.components.FlowChips
+import com.fadghost.notesapp.ui.components.auraPress
+import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.editor.MarkdownEdits
 import com.fadghost.notesapp.ui.editor.MarkdownVisualTransformation
 import com.fadghost.notesapp.ui.shell.NavTab
@@ -73,9 +71,9 @@ import java.util.Locale
  */
 @Composable
 fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
-    val state by viewModel.state.collectAsState()
-    val biometricEnabled by viewModel.biometricEnabled.collectAsState()
-    val locked by viewModel.locked.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val locked by viewModel.locked.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.refreshToday() }
 
@@ -88,7 +86,7 @@ fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
 
     DiaryContent(
         state = state,
-        visibleCount = viewModel.visibleCount.collectAsState().value,
+        visibleCount = viewModel.visibleCount.collectAsStateWithLifecycle().value,
         onLoadMore = viewModel::loadMore,
         onSaveTodayDebounced = { body, mood -> viewModel.saveEntry(state.today, body, mood) },
         onSaveTodayNow = { body, mood -> viewModel.saveEntryNow(state.today, body, mood) },
@@ -114,7 +112,10 @@ private fun DiaryContent(
     onOpenDay: (LocalDate) -> Unit
 ) {
     val tokens = Aura.tokens
-    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // Systemic inset fix (ux.md): reserve the shared floating-nav-pill clearance so the
+    // last entries AND the empty-state (DiaryFirstRun, an item in this list) clear the
+    // pill instead of rendering under it.
+    val navPillClearance = LocalNavPillClearance.current
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -171,7 +172,7 @@ private fun DiaryContent(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = 20.dp, end = 20.dp, top = 4.dp, bottom = navInset + 110.dp
+                start = 20.dp, end = 20.dp, top = 4.dp, bottom = navPillClearance
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -325,13 +326,15 @@ private fun DiaryBodyField(
 @Composable
 private fun PromptChip(label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .background(tokens.colors.accent.copy(alpha = 0.12f))
             .border(1.dp, tokens.colors.accent.copy(alpha = 0.4f), RoundedCornerShape(tokens.radii.pill))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )
@@ -403,12 +406,14 @@ private fun OnThisDayCard(items: List<OnThisDayItem>, onOpenDay: (LocalDate) -> 
         BasicText("ON THIS DAY", style = AuraType.labelSm.copy(color = tokens.colors.accent))
         items.forEach { item ->
             val date = runCatching { LocalDate.parse(item.entry.date) }.getOrNull()
+            val interaction = remember { MutableInteractionSource() }
             Column(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(tokens.radii.md))
+                    .auraPress(interaction)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = interaction,
                         indication = null,
                         onClick = { date?.let(onOpenDay) }
                     )
@@ -436,15 +441,17 @@ private fun OnThisDayCard(items: List<OnThisDayItem>, onOpenDay: (LocalDate) -> 
 private fun TimelineCard(entry: DiaryEntry, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val date = runCatching { LocalDate.parse(entry.date) }.getOrNull()
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
             .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
             .clip(RoundedCornerShape(tokens.radii.md))
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )
@@ -563,13 +570,15 @@ private fun DiaryDayEditor(
 @Composable
 private fun BackPill(onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

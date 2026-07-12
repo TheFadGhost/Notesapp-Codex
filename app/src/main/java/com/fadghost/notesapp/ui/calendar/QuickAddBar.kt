@@ -36,6 +36,7 @@ import com.fadghost.notesapp.calendar.QuickAddParser
 import com.fadghost.notesapp.calendar.QuickAddResult
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.LocalDateTime
@@ -129,11 +130,13 @@ private fun ConfirmChip(result: QuickAddResult, onAdd: () -> Unit) {
             }
             BasicText(sub, style = AuraType.label.copy(color = tokens.colors.textSecondary))
         }
+        val addInteraction = remember { MutableInteractionSource() }
         Box(
             Modifier
                 .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(addInteraction, tint = true)
                 .background(tokens.colors.accent)
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onAdd)
+                .clickable(interactionSource = addInteraction, indication = null, onClick = onAdd)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             BasicText("Add", style = AuraType.label.copy(color = tokens.colors.background))

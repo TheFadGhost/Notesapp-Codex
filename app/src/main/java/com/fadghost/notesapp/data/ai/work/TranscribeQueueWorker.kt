@@ -9,8 +9,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.fadghost.notesapp.data.audio.AudioAttachmentRepository
 import com.fadghost.notesapp.data.audio.RecordedSegment
 import com.fadghost.notesapp.data.audio.VoiceCommit
+import com.fadghost.notesapp.data.audio.VoiceCommitLogic
 import com.fadghost.notesapp.data.audio.VoiceTranscriber
 import com.fadghost.notesapp.data.repo.NotesRepository
 import dagger.hilt.EntryPoint
@@ -38,6 +40,7 @@ class TranscribeQueueWorker(
         fun transcriber(): VoiceTranscriber
         fun notesRepository(): NotesRepository
         fun voiceCommit(): VoiceCommit
+        fun audioAttachments(): AudioAttachmentRepository
     }
 
     override suspend fun doWork(): Result {
@@ -53,6 +56,13 @@ class TranscribeQueueWorker(
 
         val ep = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
         ep.notesRepository().getNote(noteId) ?: return Result.failure()
+
+        // Idempotency (audit M2): a retry must not re-bill STT or duplicate the commit.
+        // If these exact segments were already committed on a prior attempt, we're done —
+        // don't re-transcribe (the costly, billed step) or re-append.
+        if (VoiceCommitLogic.existingCommit(ep.audioAttachments().forNote(noteId), paths) != null) {
+            return Result.success()
+        }
 
         return runCatching {
             val transcript = ep.transcriber().transcribe(files, noteId)

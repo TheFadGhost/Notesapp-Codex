@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,8 +32,8 @@ import com.fadghost.notesapp.ui.theme.auraSheetShadow
 @Composable
 fun VoiceStorageSection(viewModel: VoiceStorageViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
-    val total by viewModel.totalBytes.collectAsState()
-    val status by viewModel.status.collectAsState()
+    val total by viewModel.totalBytes.collectAsStateWithLifecycle()
+    val status by viewModel.status.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier

@@ -33,7 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +47,7 @@ import com.fadghost.notesapp.data.ai.model.CachedModel
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
@@ -61,17 +62,17 @@ import com.fadghost.notesapp.ui.theme.auraTopHighlight
 @Composable
 fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
-    val hasKey by viewModel.hasKey.collectAsState()
-    val textModel by viewModel.textModel.collectAsState()
-    val sttModel by viewModel.sttModel.collectAsState()
-    val models by viewModel.models.collectAsState()
-    val favorites by viewModel.favorites.collectAsState()
-    val recents by viewModel.recents.collectAsState()
-    val monthTotal by viewModel.monthTotal.collectAsState()
-    val lastCall by viewModel.lastCall.collectAsState()
-    val status by viewModel.status.collectAsState()
-    val busy by viewModel.busy.collectAsState()
-    val autoCleanTranscript by viewModel.autoCleanTranscript.collectAsState()
+    val hasKey by viewModel.hasKey.collectAsStateWithLifecycle()
+    val textModel by viewModel.textModel.collectAsStateWithLifecycle()
+    val sttModel by viewModel.sttModel.collectAsStateWithLifecycle()
+    val models by viewModel.models.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val recents by viewModel.recents.collectAsStateWithLifecycle()
+    val monthTotal by viewModel.monthTotal.collectAsStateWithLifecycle()
+    val lastCall by viewModel.lastCall.collectAsStateWithLifecycle()
+    val status by viewModel.status.collectAsStateWithLifecycle()
+    val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val autoCleanTranscript by viewModel.autoCleanTranscript.collectAsStateWithLifecycle()
 
     val clipboard = LocalClipboardManager.current
     var keyInput by remember { mutableStateOf("") }
@@ -206,11 +207,13 @@ private enum class PickerTarget { TEXT, STT }
 @Composable
 private fun ModelRow(label: String, value: String, subtitle: String? = null, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(tokens.radii.sm))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .auraPress(interaction)
+            .clickable(interaction, indication = null, onClick = onClick)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -351,13 +354,16 @@ private fun ModelItem(
     onToggleFavorite: (String) -> Unit
 ) {
     val tokens = Aura.tokens
+    val rowInteraction = remember { MutableInteractionSource() }
+    val pinInteraction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(rowInteraction)
             .background(if (selected) tokens.colors.accent.copy(alpha = 0.14f) else tokens.colors.background)
             .border(1.dp, if (selected) tokens.colors.accent else tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { onSelect(model.id) })
+            .clickable(rowInteraction, indication = null, onClick = { onSelect(model.id) })
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -369,7 +375,8 @@ private fun ModelItem(
             Modifier
                 .size(34.dp)
                 .clip(RoundedCornerShape(tokens.radii.pill))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { onToggleFavorite(model.id) }),
+                .auraPress(pinInteraction)
+                .clickable(pinInteraction, indication = null, onClick = { onToggleFavorite(model.id) }),
             contentAlignment = Alignment.Center
         ) {
             AuraGlyph(Glyph.PIN, if (favorite) tokens.colors.accent else tokens.colors.textSecondary.copy(alpha = 0.4f), Modifier.size(16.dp))

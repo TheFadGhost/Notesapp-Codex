@@ -1,10 +1,13 @@
 # What's new
 
-## v1.0 — Polish
-- Two new themes: Pure Black (AMOLED) and Grey graphite, plus an 8-colour accent picker.
-- Animated theme switching with a circular reveal from the control you tap.
-- A consistent motion & haptics pass across the whole app.
-- Reduce-motion support that honours your system animation setting.
-- Faster capture: a quick-settings tile, app-icon shortcuts, and share / selected-text into a new note.
-- Accessibility pass: richer TalkBack labels, bigger touch targets, font-scale resilience.
-- Redrawn empty states across Notes, Search, Archive and Trash.
+## v2.0.0 — The big redesign
+- A brand-new traveling-bubble nav: one glowing pill slides between tabs with a springy trampoline settle.
+- A bottom-right contextual FAB with an anchored capture panel — New note, diary, voice ramble and quick reminder, each with its own icon.
+- Editorial typography throughout: Fraunces headings paired with Hanken Grotesk body.
+- A real depth and shadow system — warm paper contact shadows and a top-edge highlight, never flat.
+- Unified hand-drawn icon set across every screen, drawn by one pen.
+- Single-owner insets: the top gap is gone and nothing hides behind the nav pill any more.
+- Press feedback everywhere — every button, card, chip, tab and toggle now gently presses in when you touch it.
+- Safety first: destructive actions ask before they act, and undo now covers editor, calendar and note deletes.
+- AI-extracted reminders actually fire now — pull dates out of a note and they land on your calendar.
+- Every tab remembers where you were — scroll position and state are preserved as you move around.

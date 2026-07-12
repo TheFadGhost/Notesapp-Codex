@@ -1,5 +1,7 @@
 package com.fadghost.notesapp.ui.diary
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -12,17 +14,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import java.time.LocalDate
 
 /**
@@ -40,6 +48,13 @@ fun DiaryHeatMap(
 ) {
     val tokens = Aura.tokens
     val density = LocalDensity.current
+    val reduceMotion = LocalReduceMotion.current
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
+        animationSpec = tween(if (reduceMotion) 0 else 100),
+        label = "heatPressScale"
+    )
     if (cells.isEmpty()) return
     val weeks = cells.size
     val gapDp = 3.dp
@@ -57,13 +72,24 @@ fun DiaryHeatMap(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(heightDp)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                }
                 .pointerInput(cells, step) {
-                    detectTapGestures { pos ->
-                        val col = (pos.x / step).toInt().coerceIn(0, weeks - 1)
-                        val row = (pos.y / step).toInt().coerceIn(0, 6)
-                        val hc = cells.getOrNull(col)?.getOrNull(row) ?: return@detectTapGestures
-                        if (!hc.date.isAfter(today)) onOpenDay(hc.date)
-                    }
+                    detectTapGestures(
+                        onPress = {
+                            pressed = true
+                            tryAwaitRelease()
+                            pressed = false
+                        },
+                        onTap = onTap@{ pos ->
+                            val col = (pos.x / step).toInt().coerceIn(0, weeks - 1)
+                            val row = (pos.y / step).toInt().coerceIn(0, 6)
+                            val hc = cells.getOrNull(col)?.getOrNull(row) ?: return@onTap
+                            if (!hc.date.isAfter(today)) onOpenDay(hc.date)
+                        }
+                    )
                 }
         ) {
             cells.forEachIndexed { colIdx, column ->

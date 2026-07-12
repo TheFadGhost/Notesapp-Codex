@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fadghost.notesapp.data.ai.AiRepository
 import com.fadghost.notesapp.data.ai.AiResultStore
+import com.fadghost.notesapp.data.ai.InsertedRow
 import com.fadghost.notesapp.data.ai.net.OpenRouterClient
 import com.fadghost.notesapp.data.ai.net.OpenRouterError
 import com.fadghost.notesapp.data.ai.parse.ActionType
@@ -89,7 +90,7 @@ class EditorAiViewModel @Inject constructor(
     private var cardSeq = 0L
     private var noteIdForRun = 0L
     private var textForRun = ""
-    private val insertedRows = ArrayList<AiRepository.InsertedRow>()
+    private val insertedRows = ArrayList<InsertedRow>()
 
     /** Observe a queued Clean-up result that finished while the editor was closed/offline. */
     fun pendingQueuedCleanup(noteId: Long): StateFlow<String?> =

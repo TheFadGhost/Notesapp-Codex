@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Recurrence
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 
@@ -58,13 +59,15 @@ private fun androidx.compose.foundation.layout.RowScope.Segment(
         spring(stiffness = Spring.StiffnessMediumLow), label = "segbg"
     )
     val fg = if (selected) tokens.colors.background else tokens.colors.textSecondary
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
             .weight(1f)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .background(bg)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

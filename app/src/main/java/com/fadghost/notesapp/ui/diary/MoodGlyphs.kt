@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 
 /**
@@ -104,13 +105,15 @@ fun MoodPicker(
                 spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
                 label = "mood-scale"
             )
+            val interaction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .size(maxOf(glyphSize + 14.dp, 48.dp))
                     .clip(CircleShape)
+                    .auraPress(interaction)
                     .background(if (isSel) tokens.colors.accent.copy(alpha = 0.16f) else Color.Transparent)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = interaction,
                         indication = null,
                         onClick = { onSelect(if (isSel) null else mood) }
                     )

@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.AudioAttachment
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 
 /**
@@ -31,12 +32,14 @@ import com.fadghost.notesapp.ui.theme.Aura
 @Composable
 fun AudioChip(size: androidx.compose.ui.unit.Dp = 20.dp, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(size)
             .clip(CircleShape)
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.accent)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .semantics { contentDescription = "Play voice note" }
     ) {
         Canvas(Modifier.size(size)) {

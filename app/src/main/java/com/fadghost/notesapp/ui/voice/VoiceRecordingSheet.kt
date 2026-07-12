@@ -35,7 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +52,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import kotlinx.coroutines.launch
@@ -78,7 +79,7 @@ fun VoiceRecordingSheet(
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     val sheetHeightPx = with(density) { 420.dp.toPx() }
     val offsetY = remember { Animatable(sheetHeightPx) }
@@ -259,12 +260,14 @@ private fun RecordingBody(
                 if (state.paused) "Resume" else "Pause"
             ) { vm.togglePause() }
             // Prominent Stop button.
+            val stopInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .size(64.dp)
                     .clip(CircleShape)
+                    .auraPress(stopInteraction, tint = true)
                     .background(tokens.colors.accent)
-                    .clickable(remember { MutableInteractionSource() }, indication = null) { vm.stop() }
+                    .clickable(interactionSource = stopInteraction, indication = null) { vm.stop() }
                     .semantics { contentDescription = "Stop and transcribe" },
                 contentAlignment = Alignment.Center
             ) {
@@ -337,13 +340,15 @@ private fun MicBadge() {
 @Composable
 private fun CircleControl(glyph: Glyph, tint: Color, cd: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(52.dp)
             .clip(CircleShape)
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, CircleShape)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .semantics { contentDescription = cd },
         contentAlignment = Alignment.Center
     ) { AuraGlyph(glyph, tint, Modifier.size(22.dp)) }

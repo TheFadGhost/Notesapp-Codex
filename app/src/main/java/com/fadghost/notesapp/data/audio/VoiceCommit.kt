@@ -1,8 +1,26 @@
 package com.fadghost.notesapp.data.audio
 
+import com.fadghost.notesapp.data.db.entity.AudioAttachment
 import com.fadghost.notesapp.data.repo.NotesRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Pure idempotency predicate for voice commits (audit M2), split out so it is
+ * unit-testable without Room/Context.
+ */
+object VoiceCommitLogic {
+    /**
+     * The already-committed attachment whose segment set equals [segmentPaths], or null
+     * if these segments have not been committed yet. A WorkManager retry re-runs the
+     * commit with the same paths; matching lets the caller skip a duplicate append.
+     */
+    fun existingCommit(existing: List<AudioAttachment>, segmentPaths: List<String>): AudioAttachment? {
+        if (segmentPaths.isEmpty()) return null
+        val want = segmentPaths.toSet()
+        return existing.firstOrNull { it.segments.toSet() == want }
+    }
+}
 
 /**
  * Commits a finished voice transcript into a note (PLAN.md §5 result flow): appends
@@ -27,6 +45,12 @@ class VoiceCommit @Inject constructor(
         now: Long = System.currentTimeMillis()
     ): Committed? {
         val note = notes.getNote(noteId) ?: return null
+        // Idempotency (audit M2): if these exact segments were already committed (a prior
+        // retry finished after transcription), return the existing anchor instead of
+        // appending the transcript and recording the attachment a second time.
+        VoiceCommitLogic.existingCommit(attachments.forNote(noteId), segments.map { it.path })?.let {
+            return Committed(noteId, it.transcriptStart, it.transcriptEnd)
+        }
         val sep = if (note.body.isBlank()) "" else "\n\n"
         val start = note.body.length + sep.length
         val end = start + transcript.length

@@ -30,13 +30,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +58,7 @@ import com.fadghost.notesapp.ui.diary.DiaryScreen
 import com.fadghost.notesapp.ui.editor.EditorScreen
 import com.fadghost.notesapp.ui.calendar.CalendarDeepLink
 import com.fadghost.notesapp.ui.calendar.CalendarScreen
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.notes.NotesScreen
 import com.fadghost.notesapp.ui.screens.SettingsScreen
 import com.fadghost.notesapp.ui.theme.Aura
@@ -89,7 +91,7 @@ fun AppShell(
     LaunchedEffect(selectedTab) { fabHidden = false }
 
     // Capture paths (PLAN.md §6): tile / shortcuts / share → route into the shell.
-    val captureRequest by CaptureLaunch.request.collectAsState()
+    val captureRequest by CaptureLaunch.request.collectAsStateWithLifecycle()
     LaunchedEffect(captureRequest) {
         when (val req = captureRequest) {
             is CaptureRequest.NewNote -> { editorNoteId = 0L; restoringDraft = false }
@@ -102,7 +104,7 @@ fun AppShell(
         if (captureRequest != null) CaptureLaunch.clear()
     }
     // Shared-text note created off-thread → open it in the editor.
-    val sharedNoteId by captureVm.openNoteId.collectAsState()
+    val sharedNoteId by captureVm.openNoteId.collectAsStateWithLifecycle()
     LaunchedEffect(sharedNoteId) {
         sharedNoteId?.let { id ->
             editorNoteId = id
@@ -112,7 +114,7 @@ fun AppShell(
     }
 
     // Journaling-nudge deep link (PLAN.md §7): jump to the Diary tab when requested.
-    val diaryRequests by diaryNav.openDiaryRequests.collectAsState()
+    val diaryRequests by diaryNav.openDiaryRequests.collectAsStateWithLifecycle()
     LaunchedEffect(diaryRequests) {
         if (diaryRequests > 0) {
             selectedTab = NavTab.DIARY
@@ -122,7 +124,7 @@ fun AppShell(
 
     // Reminder-notification deep link (PLAN.md §8): jump to Calendar; the screen
     // then opens the item's edit sheet from CalendarDeepLink.
-    val calendarDeepLink by CalendarDeepLink.pendingReminderId.collectAsState()
+    val calendarDeepLink by CalendarDeepLink.pendingReminderId.collectAsStateWithLifecycle()
     LaunchedEffect(calendarDeepLink) {
         if (calendarDeepLink != null) {
             selectedTab = NavTab.CALENDAR
@@ -130,9 +132,24 @@ fun AppShell(
         }
     }
 
-    val recoverableDraft by draftRecovery.draft.collectAsState()
+    val recoverableDraft by draftRecovery.draft.collectAsStateWithLifecycle()
 
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // Clearance every scrollable tab reserves at its bottom so its last rows clear the
+    // floating nav pill instead of rendering through it (systemic collision fix): nav
+    // inset + pill height + the pill's bottom margin + a breathing gap.
+    val navPillClearance = navInset + NavPillHeight + NavPillBottomMargin + 16.dp
+
+    // Capture-panel "New diary entry" should land like the Diary FAB — focus today +
+    // raise the IME (P2-5). We switch tabs, then (once DiaryScreen is subscribed) fire
+    // the same FAB_PRIMARY signal it already handles.
+    var pendingDiaryFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingDiaryFocus, selectedTab) {
+        if (pendingDiaryFocus && selectedTab == NavTab.DIARY) {
+            ShellSignals.send(NavTab.DIARY, ShellSignal.FAB_PRIMARY)
+            pendingDiaryFocus = false
+        }
+    }
 
     // Hide-on-scroll: watch child scroll direction and toggle the FAB (ux.md §2).
     val fabNestedScroll = remember {
@@ -166,34 +183,36 @@ fun AppShell(
                 .fillMaxSize()
                 .nestedScroll(fabNestedScroll)
         ) {
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    if (reduceMotion) {
-                        fadeIn(tween(120)).togetherWith(fadeOut(tween(120)))
-                    } else {
-                        val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
-                        (slideInHorizontally(
-                            tween(220, easing = MotionTokens.EmphasizedDecelerate)
-                        ) { dir * slidePx } + fadeIn(tween(180)))
-                            .togetherWith(
-                                slideOutHorizontally(
-                                    tween(200, easing = MotionTokens.EmphasizedDecelerate)
-                                ) { -dir * slidePx / 2 } + fadeOut(tween(140))
+            CompositionLocalProvider(LocalNavPillClearance provides navPillClearance) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        if (reduceMotion) {
+                            fadeIn(tween(120)).togetherWith(fadeOut(tween(120)))
+                        } else {
+                            val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                            (slideInHorizontally(
+                                tween(220, easing = MotionTokens.EmphasizedDecelerate)
+                            ) { dir * slidePx } + fadeIn(tween(180)))
+                                .togetherWith(
+                                    slideOutHorizontally(
+                                        tween(200, easing = MotionTokens.EmphasizedDecelerate)
+                                    ) { -dir * slidePx / 2 } + fadeOut(tween(140))
+                                )
+                        }
+                    },
+                    label = "tab"
+                ) { tab ->
+                    stateHolder.SaveableStateProvider(tab) {
+                        when (tab) {
+                            NavTab.NOTES -> NotesScreen(onOpenNote = { editorNoteId = it })
+                            NavTab.DIARY -> DiaryScreen()
+                            NavTab.CALENDAR -> CalendarScreen()
+                            NavTab.SETTINGS -> SettingsScreen(
+                                currentMode = themeMode,
+                                onSelectMode = onSelectThemeMode
                             )
-                    }
-                },
-                label = "tab"
-            ) { tab ->
-                stateHolder.SaveableStateProvider(tab) {
-                    when (tab) {
-                        NavTab.NOTES -> NotesScreen(onOpenNote = { editorNoteId = it })
-                        NavTab.DIARY -> DiaryScreen()
-                        NavTab.CALENDAR -> CalendarScreen()
-                        NavTab.SETTINGS -> SettingsScreen(
-                            currentMode = themeMode,
-                            onSelectMode = onSelectThemeMode
-                        )
+                        }
                     }
                 }
             }
@@ -226,7 +245,11 @@ fun AppShell(
             onAction = { action ->
                 when (action.label) {
                     "New note" -> editorNoteId = 0L
-                    "New diary entry" -> { selectedTab = NavTab.DIARY; editorNoteId = null }
+                    "New diary entry" -> {
+                        selectedTab = NavTab.DIARY
+                        editorNoteId = null
+                        pendingDiaryFocus = true
+                    }
                     "Voice ramble" -> showVoiceCapture = true
                     "Quick reminder" -> showQuickReminder = true
                 }
@@ -285,6 +308,12 @@ fun AppShell(
                     noteId = id,
                     restoreDraft = if (restoringDraft) recoverableDraft else null,
                     onExit = { editorNoteId = null; restoringDraft = false },
+                    onDeleted = { deletedId ->
+                        editorNoteId = null
+                        restoringDraft = false
+                        // Existing note → let the Notes list offer undo (P0-2).
+                        if (deletedId > 0) ShellSignals.noteDeleted(deletedId)
+                    },
                     onOpenAiSettings = {
                         editorNoteId = null; restoringDraft = false; selectedTab = NavTab.SETTINGS
                     }
@@ -339,13 +368,15 @@ private fun RestoreDraftBanner(
 @Composable
 private fun BannerButton(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     BasicText(
         text = label,
         style = AuraType.label.copy(color = color),
         modifier = Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

@@ -18,7 +18,9 @@ import com.fadghost.notesapp.data.db.entity.NoteTagCrossRef
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.util.Markdown
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,12 +59,20 @@ class NotesRepository @Inject constructor(
 
     // --- Note writes ------------------------------------------------------------
 
-    /** Insert or update a note and mirror stripped text into the FTS index. */
-    suspend fun saveNote(note: Note): Long {
-        val id = noteDao.upsert(note)
-        val realId = if (note.id == 0L) id else note.id
-        syncFts(realId, note.title, note.body)
-        return realId
+    /**
+     * Insert or update a note and mirror stripped text into the FTS index. Runs on
+     * [Dispatchers.IO] and wraps the upsert + FTS write in a single transaction so the
+     * synchronous `execSQL`/Markdown-strip work never lands on the caller's (Main)
+     * dispatcher during the 500ms autosave, and the note and its index stay atomic
+     * (audit H2/L1).
+     */
+    suspend fun saveNote(note: Note): Long = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            val id = noteDao.upsert(note)
+            val realId = if (note.id == 0L) id else note.id
+            syncFts(realId, note.title, note.body)
+            realId
+        }
     }
 
     suspend fun setPinned(id: Long, pinned: Boolean, now: Long = System.currentTimeMillis()) =
@@ -98,9 +108,15 @@ class NotesRepository @Inject constructor(
 
     /** Permanently remove a note, its FTS row and any orphaned attachment files. */
     suspend fun hardDelete(id: Long) {
-        noteDao.hardDelete(id)
-        deleteFts(id)
-        attachmentDirFor(id).takeIf { it.exists() }?.deleteRecursively()
+        withContext(Dispatchers.IO) {
+            // Row + index removal atomic and off the caller's dispatcher (audit H2/L1).
+            db.withTransaction {
+                noteDao.hardDelete(id)
+                deleteFts(id)
+            }
+            // File IO stays outside the DB transaction.
+            attachmentDirFor(id).takeIf { it.exists() }?.deleteRecursively()
+        }
     }
 
     /**

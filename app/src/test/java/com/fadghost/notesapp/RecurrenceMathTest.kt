@@ -3,6 +3,7 @@ package com.fadghost.notesapp
 import com.fadghost.notesapp.calendar.RecurrenceMath
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDateTime
@@ -69,6 +70,24 @@ class RecurrenceMathTest {
         val ldt = Instant.ofEpochMilli(next).atZone(ny).toLocalDateTime()
         assertEquals(5, ldt.dayOfMonth)          // first 07:00 strictly after now
         assertEquals(LocalTime.of(7, 0), ldt.toLocalTime())
+    }
+
+    @Test fun nextFrom_after_downtime_lands_on_single_next_slot_no_burst() {
+        // Audit M1: a daily reminder whose device was off for a week. When it finally
+        // fires, advancing must jump straight to the first slot AFTER now — not replay
+        // every missed day one alarm at a time (which would be a notification burst).
+        val seed = millis(2026, 6, 1, 9, 0, ny)   // last-known slot, a week stale
+        val now = millis(2026, 6, 8, 10, 0, ny)   // 7 days of downtime, past today's 9am
+        val next = RecurrenceMath.nextFrom(seed, ny, Recurrence.DAILY, now)
+
+        // Strictly in the future, and it's the very next slot (tomorrow 09:00) — the
+        // slot one step earlier sits at/before now, proving exactly one is pending.
+        assertTrue(next > now)
+        val prev = Instant.ofEpochMilli(next).atZone(ny).minusDays(1).toInstant().toEpochMilli()
+        assertTrue(prev <= now)
+        val ldt = Instant.ofEpochMilli(next).atZone(ny).toLocalDateTime()
+        assertEquals(9, ldt.dayOfMonth)           // 2026-06-09 09:00, one slot past now
+        assertEquals(LocalTime.of(9, 0), ldt.toLocalTime())
     }
 
     @Test fun occurrencesInRange_counts_daily() {

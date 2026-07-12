@@ -37,6 +37,7 @@ import com.fadghost.notesapp.ui.components.FlowChips
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.PlainChip
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraAccents
 import com.fadghost.notesapp.ui.theme.AuraType
@@ -57,6 +58,9 @@ fun TagManagerOverlay(
 ) {
     val tokens = Aura.tokens
     var name by remember(tag.id) { mutableStateOf(TextFieldValue(tag.name)) }
+    // Inline danger confirms for the two irreversible actions (P2-10).
+    var confirmingDelete by remember(tag.id) { mutableStateOf(false) }
+    var mergeTarget by remember(tag.id) { mutableStateOf<Tag?>(null) }
 
     Box(
         Modifier
@@ -114,10 +118,12 @@ fun TagManagerOverlay(
             Spacer(Modifier.height(8.dp))
             FlowChips {
                 AuraAccents.palette.forEach { c ->
+                    val dotInteraction = remember { MutableInteractionSource() }
                     Box(
                         Modifier
                             .size(28.dp)
                             .clip(CircleShape)
+                            .auraPress(dotInteraction)
                             .background(c)
                             .border(
                                 width = if (tag.color == c.toArgb()) 2.dp else 0.dp,
@@ -125,7 +131,7 @@ fun TagManagerOverlay(
                                 shape = CircleShape
                             )
                             .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
+                                interactionSource = dotInteraction,
                                 indication = null,
                                 onClick = { onRecolor(c.toArgb()) }
                             )
@@ -138,24 +144,107 @@ fun TagManagerOverlay(
                 BasicText("Merge into", style = AuraType.label.copy(color = tokens.colors.textSecondary))
                 Spacer(Modifier.height(8.dp))
                 FlowChips {
-                    otherTags.forEach { t -> PlainChip(t.name, selected = false) { onMerge(t.id) } }
+                    otherTags.forEach { t ->
+                        PlainChip(t.name, selected = mergeTarget?.id == t.id) {
+                            mergeTarget = t
+                            confirmingDelete = false
+                        }
+                    }
+                }
+                // Inline merge confirm (irreversible) — only the danger button commits.
+                mergeTarget?.let { target ->
+                    Spacer(Modifier.height(10.dp))
+                    DangerConfirm(
+                        message = "Merge “${tag.name}” into “${target.name}”? This can't be undone.",
+                        confirmLabel = "Merge",
+                        onConfirm = { onMerge(target.id) },
+                        onCancel = { mergeTarget = null }
+                    )
                 }
             }
 
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                BasicText(
-                    "Delete tag",
-                    style = AuraType.label.copy(color = tokens.colors.danger),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(tokens.radii.pill))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDelete
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+            if (confirmingDelete) {
+                DangerConfirm(
+                    message = "Delete this tag? It's removed from every note (their text is kept).",
+                    confirmLabel = "Delete tag",
+                    onConfirm = onDelete,
+                    onCancel = { confirmingDelete = false }
                 )
+            } else {
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    val deleteInteraction = remember { MutableInteractionSource() }
+                    BasicText(
+                        "Delete tag",
+                        style = AuraType.label.copy(color = tokens.colors.danger),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(tokens.radii.pill))
+                            .auraPress(deleteInteraction)
+                            .clickable(
+                                interactionSource = deleteInteraction,
+                                indication = null,
+                                onClick = { confirmingDelete = true; mergeTarget = null }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Inline two-step danger confirm (P0-1 / P1-7 / P2-10 house style): an explanatory
+ * line + a Cancel and a filled danger button. Only the danger button commits.
+ */
+@Composable
+private fun DangerConfirm(
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val tokens = Aura.tokens
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(tokens.radii.md))
+            .background(tokens.colors.danger.copy(alpha = 0.10f))
+            .border(1.dp, tokens.colors.danger.copy(alpha = 0.5f), RoundedCornerShape(tokens.radii.md))
+            .padding(14.dp)
+    ) {
+        BasicText(message, style = AuraType.label.copy(color = tokens.colors.textPrimary))
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            val cancelInteraction = remember { MutableInteractionSource() }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(cancelInteraction)
+                    .clickable(
+                        interactionSource = cancelInteraction,
+                        indication = null,
+                        onClick = onCancel
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                BasicText("Cancel", style = AuraType.label.copy(color = tokens.colors.textSecondary))
+            }
+            Spacer(Modifier.width(8.dp))
+            val confirmInteraction = remember { MutableInteractionSource() }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(confirmInteraction, tint = true)
+                    .background(tokens.colors.danger)
+                    .clickable(
+                        interactionSource = confirmInteraction,
+                        indication = null,
+                        onClick = onConfirm
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                BasicText(confirmLabel, style = AuraType.label.copy(color = tokens.colors.background))
             }
         }
     }
@@ -164,13 +253,15 @@ fun TagManagerOverlay(
 @Composable
 private fun SmallAction(glyph: Glyph, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(40.dp)
+            .size(44.dp)
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(interaction, tint = true)
             .background(tokens.colors.accent.copy(alpha = 0.16f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),

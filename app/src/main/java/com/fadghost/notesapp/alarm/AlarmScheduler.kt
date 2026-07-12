@@ -25,15 +25,20 @@ import javax.inject.Singleton
 class AlarmScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reminderDao: ReminderDao
-) {
+) : ReminderAlarm {
     private val alarmManager: AlarmManager =
         context.getSystemService(AlarmManager::class.java)
 
-    /** (Re)arm the exact alarm for [reminder] at its current [Reminder.triggerAt]. */
-    fun scheduleReminder(reminder: Reminder) {
+    /**
+     * (Re)arm the exact alarm for [reminder]. Fires at [Reminder.snoozedUntil] when a
+     * snooze is pending, otherwise at [Reminder.triggerAt] — the true recurrence slot.
+     * Keeping the slot in [Reminder.triggerAt] (never overwritten by a snooze) is what
+     * lets recurrence advance from the original clock time (audit M1).
+     */
+    override fun scheduleReminder(reminder: Reminder) {
         if (reminder.done) return
         val pi = pendingIntent(reminder.id, create = true) ?: return
-        val at = reminder.triggerAt
+        val at = reminder.snoozedUntil ?: reminder.triggerAt
         try {
             if (canExact()) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
@@ -46,16 +51,16 @@ class AlarmScheduler @Inject constructor(
         }
     }
 
-    fun cancelReminder(reminderId: Long) {
+    override fun cancelReminder(reminderId: Long) {
         pendingIntent(reminderId, create = false)?.let { alarmManager.cancel(it) }
     }
 
     /** Rearm every not-done reminder — called after reboot / app update. */
-    suspend fun rescheduleAll() {
+    override suspend fun rescheduleAll() {
         reminderDao.allPending().forEach { scheduleReminder(it) }
     }
 
-    fun canExact(): Boolean = alarmManager.canScheduleExactAlarms()
+    override fun canExact(): Boolean = alarmManager.canScheduleExactAlarms()
 
     private fun pendingIntent(reminderId: Long, create: Boolean): PendingIntent? {
         val intent = Intent(context, AlarmReceiver::class.java).apply {

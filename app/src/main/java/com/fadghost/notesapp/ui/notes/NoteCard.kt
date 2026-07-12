@@ -2,7 +2,9 @@ package com.fadghost.notesapp.ui.notes
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -23,8 +25,10 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +48,7 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.TagChip
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import com.fadghost.notesapp.ui.theme.auraSheetShadow
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -69,6 +74,15 @@ fun NoteCard(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
+    val reduceMotion = LocalReduceMotion.current
+    // Shared press feedback — the card taps via detectTapGestures (no InteractionSource),
+    // so drive a pressed flag through onPress and fold a subtle scale into its layer.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(
+        if (pressed && !reduceMotion) 0.98f else 1f,
+        tween(if (reduceMotion) 0 else 100),
+        label = "cardPress"
+    )
 
     // Staggered entrance.
     val appear = remember { Animatable(0f) }
@@ -88,6 +102,8 @@ fun NoteCard(
                 alpha = appear.value
                 translationY = (1f - appear.value) * 40f
                 translationX = offsetX.value
+                scaleX = pressScale
+                scaleY = pressScale
             }
             // Sheet-plane contact shadow (rasterised once; rides the swipe layer so it
             // never re-rasterises per frame — visual.md §2.3 perf note).
@@ -97,6 +113,7 @@ fun NoteCard(
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
             .pointerInput(note.id) {
                 detectTapGestures(
+                    onPress = { pressed = true; tryAwaitRelease(); pressed = false },
                     onTap = { onOpen() },
                     onLongPress = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)

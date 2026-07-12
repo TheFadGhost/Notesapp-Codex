@@ -27,11 +27,14 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
@@ -39,7 +42,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.backup.ImportMode
 import com.fadghost.notesapp.data.prefs.ThemeMode
+import com.fadghost.notesapp.ui.components.auraPress
+import com.fadghost.notesapp.ui.settings.BackupUiState
 import com.fadghost.notesapp.ui.settings.BackupViewModel
+import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.shell.NavTab
 import com.fadghost.notesapp.ui.shell.ShellSignal
 import com.fadghost.notesapp.ui.shell.ShellSignals
@@ -70,7 +76,7 @@ fun SettingsScreen(
             .statusBarsPadding()
             .verticalScroll(scrollState)
             .padding(horizontal = 20.dp)
-            .padding(top = 12.dp)
+            .padding(top = 12.dp, bottom = LocalNavPillClearance.current)
     ) {
         // Header: eyebrow + serif title, matching the other tabs.
         BasicText("PREFERENCES", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
@@ -93,8 +99,6 @@ fun SettingsScreen(
         BackupSection()
         Spacer(Modifier.height(16.dp))
         com.fadghost.notesapp.ui.voice.VoiceStorageSection()
-
-        Spacer(Modifier.height(96.dp)) // clear the floating nav bar
     }
 }
 
@@ -111,9 +115,21 @@ private fun GroupLabel(text: String) {
 @Composable
 private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
-    val status by viewModel.status.collectAsState()
-    val pending by viewModel.pendingPreview.collectAsState()
-    val busy by viewModel.busy.collectAsState()
+    val status by viewModel.status.collectAsStateWithLifecycle()
+    val pending by viewModel.pendingPreview.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    val exporting = uiState is BackupUiState.Exporting
+    val importing = uiState is BackupUiState.Importing
+    val busy = exporting || importing
+    val error = uiState as? BackupUiState.Error
+
+    // Inline danger confirm for Replace (ux.md P0-1): tapping "Replace" expands this,
+    // and only the danger button below actually wipes + restores.
+    var confirmReplace by remember { mutableStateOf(false) }
+    var showErrorDetails by remember { mutableStateOf(false) }
+    // Collapse the confirm whenever the pending preview clears (import ran or cancelled).
+    LaunchedEffect(pending) { if (pending == null) confirmReplace = false }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
@@ -124,12 +140,22 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     ) { uri -> uri?.let(viewModel::loadPreview) }
 
     SectionCard(title = "Backup") {
-        ActionRow("Export all notes", "ZIP: markdown + metadata + checksums") {
-            if (!busy) exportLauncher.launch("notesapp-backup.zip")
+        ActionRow(
+            title = "Export all notes",
+            subtitle = "ZIP: markdown + metadata + checksums",
+            busyLabel = if (exporting) "Exporting…" else null,
+            enabled = !busy
+        ) {
+            exportLauncher.launch("notesapp-backup.zip")
         }
         DividerLine()
-        ActionRow("Import from ZIP", "Preview, then replace or merge") {
-            if (!busy) importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+        ActionRow(
+            title = "Import from ZIP",
+            subtitle = "Preview, then replace or merge",
+            busyLabel = if (importing) "Importing…" else null,
+            enabled = !busy
+        ) {
+            importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         pending?.let { preview ->
             DividerLine()
@@ -139,10 +165,50 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
                 style = AuraType.label.copy(color = tokens.colors.textSecondary),
                 modifier = Modifier.padding(vertical = 8.dp)
             )
+            if (!confirmReplace) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Merge stays one-tap safe; Replace only expands the danger confirm.
+                    ThemeChip("Merge", selected = false, onClick = { if (!busy) viewModel.confirmImport(ImportMode.MERGE) }, modifier = Modifier.weight(1f))
+                    ThemeChip("Replace", selected = false, onClick = { if (!busy) confirmReplace = true }, modifier = Modifier.weight(1f))
+                    ThemeChip("Cancel", selected = false, onClick = { viewModel.cancelImport() }, modifier = Modifier.weight(1f))
+                }
+            } else {
+                BasicText(
+                    "Replace all current notes with this backup? This can't be undone",
+                    style = AuraType.label.copy(color = tokens.colors.danger),
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ThemeChip("Cancel", selected = false, onClick = { confirmReplace = false }, modifier = Modifier.weight(1f))
+                    DangerButton("Replace all", onClick = {
+                        if (!busy) viewModel.confirmImport(ImportMode.REPLACE)
+                    }, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        error?.let { err ->
+            DividerLine()
+            BasicText(
+                err.friendly,
+                style = AuraType.label.copy(color = tokens.colors.danger),
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ThemeChip("Merge", selected = false, onClick = { viewModel.confirmImport(ImportMode.MERGE) }, modifier = Modifier.weight(1f))
-                ThemeChip("Replace", selected = false, onClick = { viewModel.confirmImport(ImportMode.REPLACE) }, modifier = Modifier.weight(1f))
-                ThemeChip("Cancel", selected = false, onClick = { viewModel.cancelImport() }, modifier = Modifier.weight(1f))
+                ThemeChip("Retry", selected = false, onClick = { showErrorDetails = false; viewModel.retry() }, modifier = Modifier.weight(1f))
+                ThemeChip(
+                    if (showErrorDetails) "Hide details" else "Show details",
+                    selected = false,
+                    onClick = { showErrorDetails = !showErrorDetails },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (showErrorDetails) {
+                BasicText(
+                    err.detail,
+                    style = AuraType.bodySm.copy(color = tokens.colors.textSecondary),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
         status?.let {
@@ -153,24 +219,65 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun ActionRow(title: String, subtitle: String, onClick: () -> Unit) {
+private fun ActionRow(
+    title: String,
+    subtitle: String,
+    busyLabel: String? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
+                enabled = enabled,
                 onClick = onClick
             )
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).alpha(if (enabled) 1f else 0.45f)) {
             BasicText(title, style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
             BasicText(subtitle, style = AuraType.bodySm.copy(color = tokens.colors.textSecondary))
         }
+        busyLabel?.let {
+            BasicText(it, style = AuraType.label.copy(color = tokens.colors.accent))
+        }
+    }
+}
+
+/** Filled danger button — the ONLY control that triggers a destructive replace (ux.md P0-1). */
+@Composable
+private fun DangerButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
+            .background(tokens.colors.danger)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(
+            text = label,
+            style = AuraType.label.copy(color = tokens.colors.background, textAlign = TextAlign.Center)
+        )
     }
 }
 
@@ -228,14 +335,16 @@ private fun ThemeChip(
     )
     val bg = lerp(tokens.colors.surface, tokens.colors.accent.copy(alpha = 0.9f), t)
     val fg = lerp(tokens.colors.textSecondary, tokens.colors.background, t)
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .height(44.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .background(bg)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),

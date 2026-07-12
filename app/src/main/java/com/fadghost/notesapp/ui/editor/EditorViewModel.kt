@@ -264,13 +264,18 @@ class EditorViewModel @Inject constructor(
         }
     }
 
-    fun deleteNote(onDone: () -> Unit) {
+    /**
+     * Soft-delete the open note and exit. [onDone] receives the deleted note id (0 for a
+     * never-persisted new note) so the shell can route it to the Notes list for the
+     * universal undo snackbar (P0-2). A brand-new empty note has nothing to undo.
+     */
+    fun deleteNote(onDone: (Long) -> Unit) {
         viewModelScope.launch {
             val id = _state.value.noteId
             if (id > 0) repo.softDelete(id)
             draftStore.clear()
             _state.value = EditorState()
-            onDone()
+            onDone(id)
         }
     }
 }

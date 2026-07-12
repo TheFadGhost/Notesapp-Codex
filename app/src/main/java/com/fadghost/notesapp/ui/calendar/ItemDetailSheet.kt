@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,11 +44,28 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraDateTimePicker
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+
+/**
+ * Pure, testable save-gate for the create/edit sheet (ux.md P1-4). Kept free of any
+ * Compose/Android types and with an injectable [nowMillis] so it is deterministic
+ * under unit test. A reminder whose time has already passed is blocked; events may
+ * legitimately be logged in the past, so [Result.PAST_TIME] applies to reminders only.
+ */
+object ItemDetailValidation {
+    enum class Result { OK, BLANK_TITLE, PAST_TIME }
+
+    fun canSave(kind: CalendarKind, title: String, whenMillis: Long, nowMillis: Long): Result = when {
+        title.isBlank() -> Result.BLANK_TITLE
+        kind == CalendarKind.REMINDER && whenMillis < nowMillis -> Result.PAST_TIME
+        else -> Result.OK
+    }
+}
 
 /**
  * Spring-up create/edit sheet for a calendar item (PLAN.md §8 — title, start/end
@@ -177,6 +195,20 @@ private fun SheetBody(
             Field(value = notes, placeholder = "Add notes", onChange = { notes = it }, singleLine = false)
         }
 
+        // Live save-gate (ux.md P1-4): blank title dims the button; a past reminder
+        // time surfaces an inline notice and blocks the save entirely.
+        val startMs = toMillis(start, zone)
+        val validation = ItemDetailValidation.canSave(kind, title, startMs, System.currentTimeMillis())
+        val canSave = validation == ItemDetailValidation.Result.OK
+
+        if (validation == ItemDetailValidation.Result.PAST_TIME) {
+            Spacer(Modifier.size(14.dp))
+            BasicText(
+                "That time has already passed — pick a future time for this reminder.",
+                style = AuraType.label.copy(color = tokens.colors.danger)
+            )
+        }
+
         Spacer(Modifier.size(22.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!isNew) {
@@ -187,8 +219,7 @@ private fun SheetBody(
             Spacer(Modifier.weight(1f))
             SoftButton("Cancel", filled = false, onClick = onDismiss)
             Spacer(Modifier.size(10.dp))
-            SoftButton("Save", filled = true, onClick = {
-                val startMs = toMillis(start, zone)
+            SaveButton(label = if (isNew) "Create" else "Save", enabled = canSave, onClick = {
                 val endMs = toMillis(if (end.isBefore(start)) start.plusHours(1) else end, zone)
                 onSave(
                     seed.copy(
@@ -206,17 +237,49 @@ private fun SheetBody(
     }
 }
 
+/**
+ * Accent primary button that can be disabled (ux.md P1-4). Mirrors [SoftButton]'s
+ * filled look but dims to 40% and drops its click when [enabled] is false, so a blank
+ * title or past-time reminder can never be saved.
+ */
+@Composable
+private fun SaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+    val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
+    val alpha = if (enabled) 1f else 0.4f
+    Box(
+        Modifier
+            .height(42.dp)
+            .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
+            .background(tokens.colors.accent.copy(alpha = alpha))
+            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(label, style = AuraType.label.copy(color = tokens.colors.background.copy(alpha = alpha)))
+    }
+}
+
 @Composable
 private fun KindTab(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val bg = if (selected) tokens.colors.accent else tokens.colors.background
     val fg = if (selected) tokens.colors.background else tokens.colors.textSecondary
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
             .background(bg)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {

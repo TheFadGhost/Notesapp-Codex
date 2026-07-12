@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -34,7 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +48,8 @@ import com.fadghost.notesapp.ui.components.AuraUndoSnackbar
 import com.fadghost.notesapp.ui.components.EmptyGlyph
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.PlainChip
+import com.fadghost.notesapp.ui.components.auraPress
+import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.shell.NavTab
 import com.fadghost.notesapp.ui.shell.ShellSignal
 import com.fadghost.notesapp.ui.shell.ShellSignals
@@ -68,22 +70,21 @@ fun NotesScreen(
     viewModel: NotesViewModel = hiltViewModel()
 ) {
     val tokens = Aura.tokens
-    val notes by viewModel.notes.collectAsState()
-    val query by viewModel.query.collectAsState()
-    val filter by viewModel.filter.collectAsState()
-    val isGrid by viewModel.isGrid.collectAsState()
-    val folders by viewModel.folders.collectAsState()
-    val tags by viewModel.tags.collectAsState()
-    val snackbar by viewModel.snackbar.collectAsState()
+    val notes by viewModel.notes.collectAsStateWithLifecycle()
+    val query by viewModel.query.collectAsStateWithLifecycle()
+    val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val isGrid by viewModel.isGrid.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val tags by viewModel.tags.collectAsStateWithLifecycle()
+    val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
 
     var menuFor by remember { mutableStateOf<NoteCardUi?>(null) }
     var movingNote by remember { mutableStateOf<NoteCardUi?>(null) }
     var managingTag by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Tag?>(null) }
 
-    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    val navPillClearance = LocalNavPillClearance.current
     // Nav re-tap on the active tab scrolls the grid to the top (V2-SPEC item 13).
     LaunchedEffect(Unit) {
         ShellSignals.flow.collect { msg ->
@@ -91,6 +92,10 @@ fun NotesScreen(
                 scope.launch { gridState.animateScrollToItem(0) }
             }
         }
+    }
+    // The editor soft-deleted a note → surface the universal undo snackbar here (P0-2).
+    LaunchedEffect(Unit) {
+        ShellSignals.deleted.collect { msg -> viewModel.onEditorDeleted(msg.noteId) }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -115,14 +120,16 @@ fun NotesScreen(
                     BasicText(countText, style = AuraType.bodySm.copy(color = tokens.colors.textSecondary))
                     Spacer(Modifier.width(12.dp))
                 }
+                val gridToggleInteraction = remember { MutableInteractionSource() }
                 Box(
                     Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .clip(RoundedCornerShape(tokens.radii.pill))
+                        .auraPress(gridToggleInteraction, tint = true)
                         .background(tokens.colors.surface)
                         .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = gridToggleInteraction,
                             indication = null,
                             onClick = viewModel::toggleGrid
                         ),
@@ -156,15 +163,15 @@ fun NotesScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 20.dp, end = 20.dp, top = 4.dp,
-                        bottom = navInset + 110.dp
+                        bottom = navPillClearance
                     ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(notes, key = { it.id }) { note ->
+                    itemsIndexed(notes, key = { _, note -> note.id }) { index, note ->
                         NoteCard(
                             note = note,
-                            index = notes.indexOf(note),
+                            index = index,
                             onOpen = { if (!note.inTrash) onOpenNote(note.id) else menuFor = note },
                             onLongPress = { menuFor = note },
                             onPin = { viewModel.togglePin(note.id, note.pinned) },
@@ -184,7 +191,7 @@ fun NotesScreen(
             onDismiss = viewModel::dismissSnackbar,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = navInset + 96.dp)
+                .padding(bottom = navPillClearance)
         )
 
         menuFor?.let { note ->

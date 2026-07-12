@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.DayOfWeek
@@ -199,12 +200,14 @@ private fun DayCell(
         val count = items.size
         if (count > 0) append(", $count ${if (count == 1) "item" else "items"}")
     }
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .aspectRatio(1f)
             .padding(3.dp)
             .clip(CircleShape)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .auraPress(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .semantics {
                 selected = isSelected
                 contentDescription = dayLabel
@@ -255,11 +258,13 @@ private fun DotRow(items: List<CalendarItem>, dimmed: Boolean) {
 @Composable
 private fun TodayButton(onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         BasicText("Today", style = AuraType.label.copy(color = tokens.colors.accent))
@@ -268,10 +273,12 @@ private fun TodayButton(onClick: () -> Unit) {
 
 @Composable
 private fun IconTap(glyph: Glyph, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(36.dp)
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+            .auraPress(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         AuraGlyph(glyph, Aura.tokens.colors.textSecondary, Modifier.size(22.dp))

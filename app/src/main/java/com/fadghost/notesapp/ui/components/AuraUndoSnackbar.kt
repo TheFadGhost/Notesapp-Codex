@@ -82,24 +82,28 @@ fun AuraUndoSnackbar(
                 style = AuraType.body.copy(color = tokens.colors.textPrimary)
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val actionInteraction = remember { MutableInteractionSource() }
                 BasicText(
                     text = msg.actionLabel,
                     style = AuraType.label.copy(color = tokens.colors.accent),
                     modifier = Modifier
                         .clip(RoundedCornerShape(tokens.radii.pill))
+                        .auraPress(actionInteraction)
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = actionInteraction,
                             indication = null,
                             onClick = onAction
                         )
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 )
+                val dismissInteraction = remember { MutableInteractionSource() }
                 Box(
                     Modifier
                         .size(28.dp)
                         .clip(RoundedCornerShape(tokens.radii.pill))
+                        .auraPress(dismissInteraction)
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = dismissInteraction,
                             indication = null,
                             onClick = onDismiss
                         ),

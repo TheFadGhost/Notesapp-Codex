@@ -27,7 +27,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
@@ -55,7 +56,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun WhatsNewHost(viewModel: WhatsNewViewModel = hiltViewModel()) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val whatsNew = state ?: return
     WhatsNewSheet(
         lines = whatsNew.lines,
@@ -144,14 +145,16 @@ private fun WhatsNewSheet(
                 lines.forEach { line -> ChangelogRow(line) }
             }
             Spacer(Modifier.height(20.dp))
+            val gotItInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .padding(horizontal = 24.dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(gotItInteraction, tint = true)
                     .background(tokens.colors.accent)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = gotItInteraction,
                         indication = null
                     ) { close() }
                     .semantics { contentDescription = "Got it, dismiss what's new" }

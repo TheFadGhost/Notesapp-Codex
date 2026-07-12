@@ -128,6 +128,14 @@ class NotesViewModel @Inject constructor(
         offerUndo("Moved to Trash") { repo.restore(id) }
     }
 
+    /**
+     * The editor already soft-deleted [id]; just surface the universal undo snackbar
+     * here (P0-2). No second softDelete — the undo restores the same row.
+     */
+    fun onEditorDeleted(id: Long) {
+        offerUndo("Moved to Trash") { repo.restore(id) }
+    }
+
     fun duplicate(id: Long) = viewModelScope.launch { repo.duplicate(id) }
 
     fun moveToFolder(id: Long, folderId: Long?) = viewModelScope.launch { repo.moveToFolder(id, folderId) }

@@ -34,7 +34,13 @@ class AlarmReceiver : BroadcastReceiver() {
                     ReminderNotifier.notify(context, reminder)
                     if (reminder.recurrence != Recurrence.NONE) {
                         val zone = runCatching { ZoneId.of(reminder.timezone) }.getOrDefault(ZoneId.systemDefault())
-                        val next = RecurrenceMath.nextOccurrence(reminder.triggerAt, zone, reminder.recurrence)
+                        // Anchor on the true recurrence slot (triggerAt, never a snoozed
+                        // time) and jump straight to the first occurrence after *now*:
+                        // after downtime this catches up in one hop instead of firing a
+                        // burst of back-to-back missed occurrences (audit M1).
+                        val next = RecurrenceMath.nextFrom(
+                            reminder.triggerAt, zone, reminder.recurrence, System.currentTimeMillis()
+                        )
                         ep.reminderDao().reschedule(id, next, null)
                         ep.alarmScheduler().scheduleReminder(reminder.copy(triggerAt = next, snoozedUntil = null))
                     }

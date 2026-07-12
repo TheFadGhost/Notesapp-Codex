@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
@@ -173,11 +174,13 @@ private fun Segmented(selected: BeforeAfter, onSelect: (BeforeAfter) -> Unit) {
 @Composable
 private fun SegItem(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .background(if (selected) tokens.colors.accent else Color.Transparent)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 9.dp),
         contentAlignment = Alignment.Center
     ) {

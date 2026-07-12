@@ -43,7 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -56,7 +56,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.ui.components.AuraGlyph
+import com.fadghost.notesapp.ui.components.AuraUndoSnackbar
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
+import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.shell.NavTab
 import com.fadghost.notesapp.ui.shell.ShellSignal
 import com.fadghost.notesapp.ui.shell.ShellSignals
@@ -86,9 +89,11 @@ fun CalendarScreen(
 ) {
     val tokens = Aura.tokens
     val zone = remember { ZoneId.systemDefault() }
-    val data by viewModel.data.collectAsState()
+    val data by viewModel.data.collectAsStateWithLifecycle()
+    val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val deepLinkReminderId by CalendarDeepLink.pendingReminderId.collectAsState()
+    val navPillClearance = LocalNavPillClearance.current
+    val deepLinkReminderId by CalendarDeepLink.pendingReminderId.collectAsStateWithLifecycle()
 
     val today = remember { LocalDate.now(zone) }
     var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
@@ -163,7 +168,10 @@ fun CalendarScreen(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 20.dp, end = 20.dp, top = 4.dp, bottom = 120.dp
+                start = 20.dp, end = 20.dp, top = 4.dp,
+                // Reserve the floating nav-pill clearance so the week strip + agenda
+                // never render through the pill (systemic inset bug).
+                bottom = navPillClearance + 24.dp
             )
         ) {
             // Screen title header — parity with Notes/Diary/Settings (ux.md §3 P0).
@@ -178,8 +186,7 @@ fun CalendarScreen(
                 }
             }
             item(key = "banners") {
-                NotificationPermissionBanner()
-                BatteryBanner(context)
+                ReminderSetupCard(context)
             }
             item(key = "quickadd") {
                 QuickAddBar(
@@ -266,6 +273,16 @@ fun CalendarScreen(
                 else viewModel.deleteReminder(d.baseId)
             }
         )
+
+        // Universal undo snackbar for deletes (ux.md P1-6), clearing the nav pill.
+        AuraUndoSnackbar(
+            message = snackbar,
+            onAction = viewModel::undoDelete,
+            onDismiss = viewModel::dismissSnackbar,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = navPillClearance)
+        )
     }
 }
 
@@ -295,12 +312,14 @@ private fun WeekStrip(
         week.forEach { d ->
             val isSel = d == selected
             val hasItems = byDay[d].orEmpty().isNotEmpty()
+            val dayInteraction = remember { MutableInteractionSource() }
             Column(
                 Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(tokens.radii.sm))
+                    .auraPress(dayInteraction)
                     .background(if (isSel) tokens.colors.accent else androidx.compose.ui.graphics.Color.Transparent)
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = { onSelect(d) })
+                    .clickable(interactionSource = dayInteraction, indication = null, onClick = { onSelect(d) })
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -348,11 +367,13 @@ private fun SelectedDayPanel(
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicText(dayLabel(date, today), style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
             Spacer(Modifier.weight(1f))
+            val addInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(addInteraction)
                     .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onAdd)
+                    .clickable(interactionSource = addInteraction, indication = null, onClick = onAdd)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 BasicText("+ Add", style = AuraType.label.copy(color = tokens.colors.accent))
@@ -397,15 +418,17 @@ private fun AgendaRow(
 ) {
     val tokens = Aura.tokens
     val accent = if (item.kind == CalendarKind.EVENT) tokens.colors.accent else tokens.colors.danger
+    val rowInteraction = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
             .clip(RoundedCornerShape(tokens.radii.md))
+            .auraPress(rowInteraction, tint = true)
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .clickable(interactionSource = rowInteraction, indication = null, onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -433,13 +456,15 @@ private fun AgendaRow(
         }
         if (item.kind == CalendarKind.REMINDER) {
             Spacer(Modifier.size(10.dp))
+            val toggleInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .size(26.dp)
                     .clip(CircleShape)
+                    .auraPress(toggleInteraction)
                     .border(1.5.dp, if (item.done) accent else tokens.colors.outline, CircleShape)
                     .background(if (item.done) accent else androidx.compose.ui.graphics.Color.Transparent)
-                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onToggleDone),
+                    .clickable(interactionSource = toggleInteraction, indication = null, onClick = onToggleDone),
                 contentAlignment = Alignment.Center
             ) {
                 if (item.done) AuraGlyph(Glyph.CHECK, tokens.colors.background, Modifier.size(16.dp))
@@ -474,19 +499,29 @@ private fun CalendarEmptyState() {
 
 // --- Permission + battery banners ------------------------------------------
 
+/**
+ * Single collapsed "Set up reminders" card (ux.md P1-8). Replaces the two separate
+ * notification-permission + battery-optimisation banners: it shows only while at
+ * least one condition is unmet, holds each unmet condition's action inside itself,
+ * and is dismissible as a whole. If only one condition is unmet, only that action
+ * appears.
+ */
 @Composable
-private fun NotificationPermissionBanner() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    val context = LocalContext.current
-    var granted by remember { mutableStateOf(hasNotifPermission(context)) }
-    var asked by remember { mutableStateOf(false) }
+private fun ReminderSetupCard(context: Context) {
     var dismissed by remember { mutableStateOf(false) }
+    var notifGranted by remember { mutableStateOf(hasNotifPermission(context)) }
+    var notifAsked by remember { mutableStateOf(false) }
+    val ignoringBattery = remember { isIgnoringBatteryOptimizations(context) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
-        granted = result
-        asked = true
+        notifGranted = result
+        notifAsked = true
     }
-    if (granted || dismissed) return
+
+    val notifSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val notifNeeded = notifSupported && !notifGranted
+    val batteryNeeded = !ignoringBattery
+    if (dismissed || (!notifNeeded && !batteryNeeded)) return
 
     val tokens = Aura.tokens
     Column(
@@ -500,52 +535,42 @@ private fun NotificationPermissionBanner() {
             .auraTopHighlight(tokens.radii.md)
             .padding(16.dp)
     ) {
-        BasicText("Turn on reminder notifications", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
-        Spacer(Modifier.size(4.dp))
-        BasicText(
-            if (asked) "Notifications are off. Enable them in Settings so reminders can alert you."
-            else "Reminders need notification access to alert you at the right time.",
-            style = AuraType.label.copy(color = tokens.colors.textSecondary)
-        )
-        Spacer(Modifier.size(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BannerAction(if (asked) "Open Settings" else "Enable") {
-                if (asked) openAppNotificationSettings(context) else launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            Spacer(Modifier.size(8.dp))
-            BannerAction("Not now", subtle = true) { dismissed = true }
-        }
-    }
-}
-
-@Composable
-private fun BatteryBanner(context: Context) {
-    var dismissed by remember { mutableStateOf(false) }
-    val ignoring = remember { isIgnoringBatteryOptimizations(context) }
-    if (ignoring || dismissed) return
-
-    val tokens = Aura.tokens
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .auraFloatShadow(RoundedCornerShape(tokens.radii.md))
-            .clip(RoundedCornerShape(tokens.radii.md))
-            .background(tokens.colors.danger.copy(alpha = 0.10f))
-            .border(1.dp, tokens.colors.danger.copy(alpha = 0.4f), RoundedCornerShape(tokens.radii.md))
-            .padding(16.dp)
-    ) {
-        BasicText("Reminders may be delayed", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
-        Spacer(Modifier.size(4.dp))
-        BasicText(
-            "Battery optimisation is on for this app. Allow it to run unrestricted so alarms fire on time.",
-            style = AuraType.label.copy(color = tokens.colors.textSecondary)
-        )
-        Spacer(Modifier.size(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BannerAction("Fix") { openBatterySettings(context) }
-            Spacer(Modifier.size(8.dp))
+            BasicText(
+                "Set up reminders",
+                style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary),
+                modifier = Modifier.weight(1f)
+            )
             BannerAction("Dismiss", subtle = true) { dismissed = true }
+        }
+        Spacer(Modifier.size(4.dp))
+        BasicText(
+            "Finish setup so reminders alert you at the right time.",
+            style = AuraType.label.copy(color = tokens.colors.textSecondary)
+        )
+
+        if (notifNeeded) {
+            Spacer(Modifier.size(14.dp))
+            BasicText(
+                if (notifAsked) "Notifications are off. Enable them in Settings so reminders can alert you."
+                else "Reminders need notification access to alert you at the right time.",
+                style = AuraType.label.copy(color = tokens.colors.textSecondary)
+            )
+            Spacer(Modifier.size(8.dp))
+            BannerAction(if (notifAsked) "Open notification settings" else "Enable notifications") {
+                if (notifAsked) openAppNotificationSettings(context)
+                else launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        if (batteryNeeded) {
+            Spacer(Modifier.size(14.dp))
+            BasicText(
+                "Battery optimisation may delay alarms. Allow this app to run unrestricted so they fire on time.",
+                style = AuraType.label.copy(color = tokens.colors.textSecondary)
+            )
+            Spacer(Modifier.size(8.dp))
+            BannerAction("Fix battery setting") { openBatterySettings(context) }
         }
     }
 }
@@ -554,12 +579,14 @@ private fun BatteryBanner(context: Context) {
 private fun BannerAction(label: String, subtle: Boolean = false, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val color = if (subtle) tokens.colors.textSecondary else tokens.colors.accent
+    val interaction = remember { MutableInteractionSource() }
     BasicText(
         label,
         style = AuraType.label.copy(color = color),
         modifier = Modifier
             .clip(RoundedCornerShape(tokens.radii.pill))
-            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .auraPress(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     )
 }

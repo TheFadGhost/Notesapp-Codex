@@ -2,7 +2,9 @@ package com.fadghost.notesapp.ui.voice
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -38,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,8 +49,10 @@ import com.fadghost.notesapp.data.db.entity.AudioAttachment
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.delay
 
 /**
@@ -134,12 +139,14 @@ private fun PlayerCard(
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             // Play / pause.
+            val playInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .size(48.dp)
                     .clip(CircleShape)
+                    .auraPress(playInteraction, tint = true)
                     .background(tokens.colors.accent)
-                    .clickable(remember { MutableInteractionSource() }, indication = null) {
+                    .clickable(interactionSource = playInteraction, indication = null) {
                         controller.toggle(); playing = controller.isPlaying
                     },
                 contentAlignment = Alignment.Center
@@ -187,12 +194,26 @@ private fun PlayerCard(
 @Composable
 private fun Scrubber(fraction: Float, onSeek: (Float) -> Unit) {
     val tokens = Aura.tokens
+    val reduceMotion = LocalReduceMotion.current
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
+        animationSpec = tween(if (reduceMotion) 0 else 100),
+        label = "scrubberPressScale"
+    )
     Box(
         Modifier
             .fillMaxWidth()
             .height(24.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .pointerInput(Unit) {
-                detectTapGestures { pos -> onSeek((pos.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures(
+                    onPress = { pressed = true; tryAwaitRelease(); pressed = false },
+                    onTap = { pos -> onSeek((pos.x / size.width).coerceIn(0f, 1f)) }
+                )
             }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures { change, _ ->

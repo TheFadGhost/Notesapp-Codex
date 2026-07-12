@@ -9,8 +9,8 @@ import com.fadghost.notesapp.data.ai.net.OpenRouterClient
 import com.fadghost.notesapp.data.ai.net.OpenRouterModel
 import com.fadghost.notesapp.data.ai.net.ResponseFormat
 import com.fadghost.notesapp.data.ai.net.Usage
+import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.data.ai.parse.ActionExtractionParser
-import com.fadghost.notesapp.data.ai.parse.ActionType
 import com.fadghost.notesapp.data.ai.parse.ExtractOutcome
 import com.fadghost.notesapp.data.ai.parse.ProposedAction
 import com.fadghost.notesapp.data.ai.text.Chunker
@@ -19,13 +19,10 @@ import com.fadghost.notesapp.data.db.dao.AiCostDao
 import com.fadghost.notesapp.data.db.dao.CachedModelDao
 import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
-import com.fadghost.notesapp.data.db.entity.Event
-import com.fadghost.notesapp.data.db.entity.Reminder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import java.time.ZoneId
-import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,9 +41,11 @@ class AiRepository @Inject constructor(
     private val modelDao: CachedModelDao,
     private val eventDao: EventDao,
     private val reminderDao: ReminderDao,
-    private val connectivity: Connectivity
+    private val connectivity: Connectivity,
+    private val alarm: ReminderAlarm
 ) {
     private val extractionParser = ActionExtractionParser()
+    private val inserter = ActionInserter(eventDao, reminderDao, alarm)
 
     val hasKey: Flow<Boolean> = keyStore.hasKey
     val textModel: Flow<String> = prefs.textModel
@@ -239,52 +238,14 @@ class AiRepository @Inject constructor(
 
     // --- Inserting accepted actions into Room -----------------------------------
 
-    /** Insert an accepted proposal. Returns a token identifying the inserted row for undo. */
-    suspend fun insertAction(action: ProposedAction): InsertedRow? {
-        val tz = TimeZone.getDefault().id
-        return when (action.type) {
-            ActionType.EVENT -> {
-                val start = action.datetimeMillis ?: System.currentTimeMillis()
-                val id = eventDao.upsert(
-                    Event(
-                        title = action.title,
-                        startAt = start,
-                        endAt = start + 60 * 60 * 1000,
-                        timezone = tz,
-                        notes = action.notes
-                    )
-                )
-                InsertedRow.EventRow(id)
-            }
-            ActionType.REMINDER -> {
-                val trigger = action.datetimeMillis ?: System.currentTimeMillis()
-                val id = reminderDao.upsert(Reminder(title = action.title, triggerAt = trigger, timezone = tz))
-                InsertedRow.ReminderRow(id)
-            }
-            // Todos have no dedicated table yet (calendar UI is M3); nothing to insert.
-            ActionType.TODO -> null
-        }
-    }
+    /**
+     * Insert an accepted proposal, arming the exact alarm for reminders. Returns a
+     * token identifying the inserted row for undo. Delegates to [ActionInserter].
+     */
+    suspend fun insertAction(action: ProposedAction): InsertedRow? = inserter.insert(action)
 
-    /** Undo a previously [insertAction]-ed row (batch "Undo all"). */
-    suspend fun deleteInserted(row: InsertedRow) {
-        when (row) {
-            is InsertedRow.EventRow -> eventDao.delete(Event(id = row.id, title = "", startAt = 0, endAt = 0, timezone = ""))
-            is InsertedRow.ReminderRow -> reminderDao.delete(Reminder(id = row.id, title = "", triggerAt = 0, timezone = ""))
-        }
-    }
-
-    sealed interface InsertedRow {
-        data class EventRow(val id: Long) : InsertedRow
-        data class ReminderRow(val id: Long) : InsertedRow
-    }
-
-    /** Insert a standalone reminder (capture sheet "Quick reminder"). Returns row id. */
-    suspend fun insertReminder(title: String, triggerAt: Long): Long =
-        reminderDao.upsert(Reminder(title = title, triggerAt = triggerAt, timezone = TimeZone.getDefault().id))
-
-    suspend fun deleteReminder(id: Long) =
-        reminderDao.delete(Reminder(id = id, title = "", triggerAt = 0, timezone = ""))
+    /** Undo a previously [insertAction]-ed row (batch "Undo all"), cancelling its alarm. */
+    suspend fun deleteInserted(row: InsertedRow) = inserter.delete(row)
 
     // --- Cost -------------------------------------------------------------------
 

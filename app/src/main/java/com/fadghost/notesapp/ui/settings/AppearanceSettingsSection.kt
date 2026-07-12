@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.prefs.ThemeMode
 import com.fadghost.notesapp.ui.MainViewModel
+import com.fadghost.notesapp.ui.components.AuraToggle
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraAccents
@@ -62,9 +64,9 @@ import com.fadghost.notesapp.ui.theme.ThemeTokens
 @Composable
 fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
-    val mode by viewModel.themeMode.collectAsState()
-    val accentIndex by viewModel.accentIndex.collectAsState()
-    val reduceMotion by viewModel.reduceMotion.collectAsState()
+    val mode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val accentIndex by viewModel.accentIndex.collectAsStateWithLifecycle()
+    val reduceMotion by viewModel.reduceMotion.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
 
     Column(
@@ -109,13 +111,15 @@ fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
         Spacer(Modifier.height(8.dp))
         // "Theme default" reset chip.
         val defaultSelected = accentIndex == AuraAccents.THEME_DEFAULT
+        val defaultInteraction = remember { MutableInteractionSource() }
         Box(
             Modifier
                 .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(defaultInteraction)
                 .background(if (defaultSelected) tokens.colors.accent.copy(alpha = 0.16f) else Color.Transparent)
                 .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = defaultInteraction,
                     indication = null,
                     onClick = { viewModel.setAccentIndex(AuraAccents.THEME_DEFAULT) }
                 )
@@ -146,6 +150,7 @@ private fun ThemeSwatchCard(
     val ringAlpha by animateFloatAsState(if (selected) 1f else 0f, label = "ring")
     val lift by animateDpAsState(if (selected) 2.dp else 0.dp, label = "lift")
     var center by remember { androidx.compose.runtime.mutableStateOf(Offset(0.5f, 0.5f)) }
+    val interaction = remember { MutableInteractionSource() }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -158,8 +163,9 @@ private fun ThemeSwatchCard(
                 center = Offset(b.center.x / w, b.center.y / h)
             }
             .clip(RoundedCornerShape(tokens.radii.md))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = {
                     ThemeSwitchController.setOrigin(center.x, center.y)
@@ -253,13 +259,15 @@ private fun AccentDot(
     val tokens = Aura.tokens
     val haptics = rememberAuraHaptics()
     val ring by animateFloatAsState(if (selected) 1f else 0f, label = "accentRing")
+    val interaction = remember { MutableInteractionSource() }
     // 48dp touch target (PLAN.md §11) with a smaller visual dot centred inside.
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = { haptics.tick(); onSelect() }
             )
@@ -289,11 +297,13 @@ private fun AccentDot(
 private fun ReduceMotionRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
     val tokens = Aura.tokens
     val haptics = rememberAuraHaptics()
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = { haptics.tick(); onToggle(!enabled) }
             )
@@ -312,35 +322,6 @@ private fun ReduceMotionRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
             )
         }
         AuraToggle(checked = enabled, onCheckedChange = { haptics.tick(); onToggle(it) })
-    }
-}
-
-/** Minimal custom toggle (no Material Switch) used by appearance settings. */
-@Composable
-private fun AuraToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val tokens = Aura.tokens
-    val t by animateFloatAsState(if (checked) 1f else 0f, label = "toggle")
-    Box(
-        Modifier
-            .size(width = 46.dp, height = 28.dp)
-            .clip(CircleShape)
-            .background(lerp(tokens.colors.outline, tokens.colors.accent, t))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { onCheckedChange(!checked) }
-            )
-            .padding(3.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        val offset by animateDpAsState(if (checked) 18.dp else 0.dp, label = "knob")
-        Box(
-            Modifier
-                .padding(start = offset)
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(tokens.colors.surface)
-        )
     }
 }
 

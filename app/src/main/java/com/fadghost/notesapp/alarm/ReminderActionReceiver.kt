@@ -44,8 +44,11 @@ class ReminderActionReceiver : BroadcastReceiver() {
     private suspend fun snooze(ep: AlarmEntryPoint, id: Long, durationMs: Long) {
         val reminder = ep.reminderDao().getById(id) ?: return
         val until = SnoozeMath.snoozeUntil(System.currentTimeMillis(), durationMs)
-        ep.reminderDao().reschedule(id, until, until)
-        ep.alarmScheduler().scheduleReminder(reminder.copy(triggerAt = until, snoozedUntil = until, done = false))
+        // Keep triggerAt at the true recurrence slot; only snoozedUntil moves. The
+        // scheduler fires at snoozedUntil, but recurrence still advances from the
+        // original slot so snoozing never drifts the cadence (audit M1).
+        ep.reminderDao().reschedule(id, reminder.triggerAt, until)
+        ep.alarmScheduler().scheduleReminder(reminder.copy(snoozedUntil = until, done = false))
     }
 
     companion object {

@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
@@ -141,13 +142,15 @@ private fun TabItem(
         if (selected) tokens.colors.accent else tokens.colors.textSecondary,
         label = "navIconColor"
     )
+    val interaction = remembered()
     Box(
         modifier = Modifier
             .width(TAB_SLOT)
             .fillMaxHeight()
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remembered(),
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             )

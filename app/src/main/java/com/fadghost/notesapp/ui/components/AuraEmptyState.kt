@@ -89,13 +89,15 @@ fun AuraEmptyState(
         )
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(20.dp))
+            val actionInteraction = remember { MutableInteractionSource() }
             Column(
                 Modifier
                     .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(actionInteraction, tint = true)
                     .background(tokens.colors.accent.copy(alpha = 0.14f))
                     .border(1.dp, tokens.colors.accent.copy(alpha = 0.45f), RoundedCornerShape(tokens.radii.pill))
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = actionInteraction,
                         indication = null,
                         onClick = onAction
                     )
