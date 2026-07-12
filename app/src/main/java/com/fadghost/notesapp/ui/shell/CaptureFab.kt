@@ -125,8 +125,11 @@ fun ContextualFab(
                 scaleY = pressScale
             }
             .clip(CircleShape)
-            .background(tokens.colors.accent)
-            .border(1.dp, tokens.colors.outline, CircleShape)
+            // Translucent "frosted glass" accent (item 2): ~0.66 alpha reads as glass over
+            // scrolling content on all four themes while the white glyph stays legible; the
+            // accent-tinted rim keeps the circle defined against light backgrounds.
+            .background(tokens.colors.accent.copy(alpha = 0.66f))
+            .border(1.dp, tokens.colors.accent.copy(alpha = 0.5f), CircleShape)
             .pointerInput(Unit) {
                 // Tap = contextual primary; long-press = full capture panel.
                 detectTapGestures(

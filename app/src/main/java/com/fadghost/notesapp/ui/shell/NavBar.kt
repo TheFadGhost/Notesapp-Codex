@@ -40,8 +40,10 @@ import kotlin.math.abs
 import kotlin.math.sign
 import kotlinx.coroutines.launch
 
-// Fixed geometry (V2-SPEC item 3): 4 equal 64dp slots, 40dp bubble.
-private val TAB_SLOT = 64.dp
+// Fixed geometry (V2-SPEC item 3): 4 equal slots, 40dp bubble. Slots are 56dp (was 64)
+// so the pill + the bottom-right capture FAB form a centred cluster with a guaranteed gap
+// and fit — FAB fully on-screen, never overlapping — down to a 320dp width (bug 1).
+private val TAB_SLOT = 56.dp
 private val BUBBLE = 40.dp
 
 /**

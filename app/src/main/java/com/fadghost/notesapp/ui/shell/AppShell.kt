@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -218,22 +222,25 @@ fun AppShell(
             }
         }
 
-        // Floating translucent nav bar (hidden while the editor is open).
-        AnimatedVisibility(
-            visible = editorNoteId == null,
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(160)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = navInset + 16.dp)
-        ) {
-            AuraNavBar(
-                selected = selectedTab,
-                onSelect = { tab ->
-                    // Re-tap the active tab → scroll that screen to the top (V2-SPEC item 13).
-                    if (tab == selectedTab) ShellSignals.send(tab, ShellSignal.SCROLL_TOP)
-                    else selectedTab = tab
-                }
+        // Bottom fade: scrolling content dissolves into the background before it reaches
+        // the translucent floating pill, instead of showing through it (bug 5). Drawn over
+        // the content but under the pill/FAB, and shell-wide so every tab is treated the
+        // same. Hidden with the pill while the editor overlay is up.
+        if (editorNoteId == null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(navPillClearance)
+                    .background(
+                        // Soft at the top, fully opaque well before the pill so the pill's
+                        // band never shows scrolling content through it.
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to tokens.colors.background,
+                            1f to tokens.colors.background
+                        )
+                    )
             )
         }
 
@@ -256,26 +263,51 @@ fun AppShell(
             }
         )
 
-        // Bottom-right contextual FAB (hidden on Settings and while the editor is open).
-        if (editorNoteId == null && fabMode.visible) {
-            ContextualFab(
-                panelOpen = captureVisible,
-                hidden = fabHidden,
-                onPrimary = {
-                    if (captureVisible) {
-                        captureVisible = false
-                    } else when (fabMode) {
-                        FabMode.CAPTURE_PANEL -> captureVisible = true
-                        FabMode.DIARY_TODAY -> ShellSignals.send(NavTab.DIARY, ShellSignal.FAB_PRIMARY)
-                        FabMode.CALENDAR_NEW -> ShellSignals.send(NavTab.CALENDAR, ShellSignal.FAB_PRIMARY)
-                        FabMode.HIDDEN -> {}
+        // Floating nav pill + bottom-right capture FAB as ONE centred cluster (bug 1): the
+        // FAB sits on the pill's visual row, a fixed 12dp gap guarantees they never overlap
+        // at any width, and the FAB keeps its layout slot when it hides-on-scroll so the
+        // pill never shifts. Both fade out while the editor is open.
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = navInset + NavPillBottomMargin),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AnimatedVisibility(
+                visible = editorNoteId == null,
+                enter = fadeIn(tween(160)),
+                exit = fadeOut(tween(160))
+            ) {
+                AuraNavBar(
+                    selected = selectedTab,
+                    onSelect = { tab ->
+                        // Re-tap the active tab → scroll that screen to the top (V2-SPEC item 13).
+                        if (tab == selectedTab) ShellSignals.send(tab, ShellSignal.SCROLL_TOP)
+                        else selectedTab = tab
                     }
-                },
-                onLongPress = { captureVisible = true },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = navInset + 20.dp)
-            )
+                )
+            }
+            // FAB hidden on Settings and while the editor is open.
+            if (editorNoteId == null && fabMode.visible) {
+                Spacer(Modifier.width(12.dp))
+                ContextualFab(
+                    panelOpen = captureVisible,
+                    hidden = fabHidden,
+                    onPrimary = {
+                        if (captureVisible) {
+                            captureVisible = false
+                        } else when (fabMode) {
+                            FabMode.CAPTURE_PANEL -> captureVisible = true
+                            FabMode.DIARY_TODAY -> ShellSignals.send(NavTab.DIARY, ShellSignal.FAB_PRIMARY)
+                            FabMode.CALENDAR_NEW -> ShellSignals.send(NavTab.CALENDAR, ShellSignal.FAB_PRIMARY)
+                            FabMode.HIDDEN -> {}
+                        }
+                    },
+                    onLongPress = { captureVisible = true }
+                )
+            }
         }
 
         com.fadghost.notesapp.ui.reminder.QuickReminderDialog(
