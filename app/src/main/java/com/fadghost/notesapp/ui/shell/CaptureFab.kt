@@ -68,7 +68,7 @@ private val captureActions = listOf(
     CaptureAction("Quick reminder", "Fire at a clock time")
 )
 
-private val FAB_SIZE = 60.dp
+private val FAB_SIZE = NavFabSize
 private val PANEL_WIDTH = 280.dp
 
 /**

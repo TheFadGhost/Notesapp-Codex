@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
@@ -40,10 +41,9 @@ import kotlin.math.abs
 import kotlin.math.sign
 import kotlinx.coroutines.launch
 
-// Fixed geometry (V2-SPEC item 3): 4 equal slots, 40dp bubble. Slots are 56dp (was 64)
-// so the pill + the bottom-right capture FAB form a centred cluster with a guaranteed gap
-// and fit — FAB fully on-screen, never overlapping — down to a 320dp width (bug 1).
-private val TAB_SLOT = 56.dp
+// Bubble diameter (V2-SPEC item 3). Tab-slot width is now responsive (passed in by the
+// shell) so all four tabs always fit — evenly shrinking, never dropping — from 320dp up
+// (P0-2). Slots default to the max envelope for previews / standalone use.
 private val BUBBLE = 40.dp
 
 /**
@@ -51,19 +51,23 @@ private val BUBBLE = 40.dp
  * traveling circle ("the bubble") sits behind the icon row and slides to the selected
  * tab with a decoupled arrival sway (trampoline, sideways). No Material components; the
  * old per-tab blurred glow is gone. The "+" now lives in a bottom-right FAB (AppShell).
+ *
+ * [slotWidth] is the per-tab width the shell computed from the screen width; the bubble
+ * travel math is derived from it so the traveling circle always lands under each glyph.
  */
 @Composable
 fun AuraNavBar(
     selected: NavTab,
     onSelect: (NavTab) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    slotWidth: Dp = NavTabSlotMax
 ) {
     val tokens = Aura.tokens
     val density = LocalDensity.current
     val reduceMotion = LocalReduceMotion.current
     val haptics = rememberAuraHaptics()
 
-    val slotPx = with(density) { TAB_SLOT.toPx() }
+    val slotPx = with(density) { slotWidth.toPx() }
     val bubbleRadiusPx = with(density) { BUBBLE.toPx() } / 2f
     // Tab centre X relative to the pill's inner (post-padding) content box.
     fun centerFor(i: Int) = i * slotPx + slotPx / 2f
@@ -97,7 +101,7 @@ fun AuraNavBar(
             .clip(RoundedCornerShape(tokens.radii.pill))
             .background(tokens.colors.surfaceTranslucent)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = NavPillHPadding),
         contentAlignment = Alignment.CenterStart
     ) {
         // Bubble layer — drawn first so it stays behind the glyphs.
@@ -125,6 +129,7 @@ fun AuraNavBar(
                 TabItem(
                     tab = tab,
                     selected = tab == selected,
+                    slotWidth = slotWidth,
                     onClick = { onSelect(tab) }
                 )
             }
@@ -136,6 +141,7 @@ fun AuraNavBar(
 private fun TabItem(
     tab: NavTab,
     selected: Boolean,
+    slotWidth: Dp,
     onClick: () -> Unit
 ) {
     val tokens = Aura.tokens
@@ -147,7 +153,7 @@ private fun TabItem(
     val interaction = remembered()
     Box(
         modifier = Modifier
-            .width(TAB_SLOT)
+            .width(slotWidth)
             .fillMaxHeight()
             .clip(RoundedCornerShape(tokens.radii.pill))
             .auraPress(interaction)
