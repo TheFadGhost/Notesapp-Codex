@@ -9,16 +9,16 @@ import androidx.compose.ui.graphics.Color
  */
 object AuraAccents {
     val palette: List<Color> = listOf(
-        Color(0xFF5B5BD6), // indigo (default accent)
-        Color(0xFF3BA5A0), // teal
-        Color(0xFF2E9E5B), // green
-        Color(0xFFC7963B), // amber
-        Color(0xFFD6693B), // orange
-        Color(0xFFD64545), // red
-        Color(0xFFC44B9B), // magenta
-        Color(0xFF7A5BD6), // violet
-        Color(0xFF3B7FD6), // blue
-        Color(0xFF6E7681)  // slate
+        Color(0xFFC0653E), // terracotta (brand default)
+        Color(0xFFC1912F), // ochre
+        Color(0xFF7E8E68), // sage
+        Color(0xFF6E6A33), // olive
+        Color(0xFF8C3A3A), // oxblood
+        Color(0xFF46566C), // slate ink-blue (desaturated, not periwinkle)
+        Color(0xFF8A7B66), // warm taupe
+        Color(0xFF3F5E48), // forest
+        Color(0xFF9E5A2E), // rust
+        Color(0xFF6E4A5B)  // plum
     )
 
     /** Resolve a stored ARGB int to a display colour, falling back to [fallback]. */
@@ -30,14 +30,14 @@ object AuraAccents {
      * Index [THEME_DEFAULT] (-1) means "use the theme's own accent" — i.e. no override.
      */
     val themeAccents: List<Color> = listOf(
-        Color(0xFF5B5BD6), // indigo
-        Color(0xFF3B7FD6), // blue
-        Color(0xFF3BA5A0), // teal
-        Color(0xFF2E9E5B), // green
-        Color(0xFFC7963B), // amber
-        Color(0xFFD6693B), // orange
-        Color(0xFFD64545), // red
-        Color(0xFFC44B9B)  // magenta
+        Color(0xFFC0653E), // terracotta (default)
+        Color(0xFFC1912F), // ochre
+        Color(0xFF7E8E68), // sage
+        Color(0xFF6E6A33), // olive
+        Color(0xFF8C3A3A), // oxblood
+        Color(0xFF46566C), // slate ink-blue (desaturated, not periwinkle)
+        Color(0xFF8A7B66), // warm taupe
+        Color(0xFF3F5E48)  // forest
     )
 
     const val THEME_DEFAULT: Int = -1

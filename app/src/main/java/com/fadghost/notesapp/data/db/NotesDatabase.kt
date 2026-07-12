@@ -37,7 +37,7 @@ import com.fadghost.notesapp.data.db.entity.Tag
         CachedModel::class,
         AudioAttachment::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -55,7 +55,7 @@ abstract class NotesDatabase : RoomDatabase() {
     companion object {
         const val NAME = "notes.db"
 
-        /** Creates the FTS5 external-content table + sync triggers on first run. */
+        /** Creates the FTS4 search index on first run (framework SQLite has no fts5). */
         val CALLBACK: Callback = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 super.onCreate(db)

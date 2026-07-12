@@ -354,5 +354,5 @@ private fun prettyMode(mode: ThemeMode): String = when (mode) {
 }
 
 private fun accentName(index: Int): String = listOf(
-    "Indigo", "Blue", "Teal", "Green", "Amber", "Orange", "Red", "Magenta"
+    "Terracotta", "Ochre", "Sage", "Olive", "Oxblood", "Slate", "Taupe", "Forest"
 ).getOrElse(index) { "Accent" }

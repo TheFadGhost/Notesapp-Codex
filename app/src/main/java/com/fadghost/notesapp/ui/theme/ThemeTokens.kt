@@ -55,16 +55,21 @@ data class ThemeTokens(
     val elevation: ThemeElevationAlphas
 )
 
+/**
+ * Light — warm "paper & ink" (PLAN.md §9). Cream paper background, a brighter fresh
+ * sheet for cards, deep charcoal ink text, terracotta accent. No blue-tinted neutrals.
+ * Accent is tuned dark enough to clear 4.5:1 on the paper for text-sized use.
+ */
 val LightTokens = ThemeTokens(
     colors = ThemeColors(
-        background = Color(0xFFF6F6FA),
-        surface = Color(0xFFFFFFFF),
-        surfaceTranslucent = Color(0xCCFFFFFF),
-        textPrimary = Color(0xFF16161D),
-        textSecondary = Color(0xFF5B5B66),
-        accent = Color(0xFF5B5BD6),
-        danger = Color(0xFFD64545),
-        outline = Color(0x1A16161D)
+        background = Color(0xFFF7F1E6),
+        surface = Color(0xFFFDFAF2),
+        surfaceTranslucent = Color(0xCCFDFAF2),
+        textPrimary = Color(0xFF23272E),
+        textSecondary = Color(0xFF6A6152),
+        accent = Color(0xFFAD5430),
+        danger = Color(0xFFB3261E),
+        outline = Color(0x1A23272E)
     ),
     elevation = ThemeElevationAlphas(
         translucentTint = 0.72f,
@@ -73,16 +78,21 @@ val LightTokens = ThemeTokens(
     )
 )
 
+/**
+ * Dark — warm charcoal ink (PLAN.md §9), not blue-black. Espresso-charcoal surfaces,
+ * cream text, warmer/brighter terracotta accent so it glows on the dark ground.
+ * Hairlines are warm cream at low alpha rather than cold white.
+ */
 val DarkTokens = ThemeTokens(
     colors = ThemeColors(
-        background = Color(0xFF0B0B0F),
-        surface = Color(0xFF16161D),
-        surfaceTranslucent = Color(0xB316161D),
-        textPrimary = Color(0xFFF3F3F7),
-        textSecondary = Color(0xFF9B9BA6),
-        accent = Color(0xFF8B8BF0),
-        danger = Color(0xFFF06565),
-        outline = Color(0x22FFFFFF)
+        background = Color(0xFF1C1A17),
+        surface = Color(0xFF26231E),
+        surfaceTranslucent = Color(0xB326231E),
+        textPrimary = Color(0xFFF2E7D5),
+        textSecondary = Color(0xFFADA491),
+        accent = Color(0xFFD2764E),
+        danger = Color(0xFFEF6B60),
+        outline = Color(0x22F2E7D5)
     ),
     elevation = ThemeElevationAlphas(
         translucentTint = 0.60f,
@@ -93,19 +103,19 @@ val DarkTokens = ThemeTokens(
 
 /**
  * Pure Black AMOLED (PLAN.md §9): true #000 backgrounds so OLED pixels power off,
- * high-contrast surfaces lifted just enough to read as cards. Translucent surfaces
- * stay near-opaque black so the frosted pill/sheet never washes out on black.
+ * with warm near-black surfaces lifted just enough to read as cards. Translucent
+ * surfaces stay near-opaque warm black so the frosted pill/sheet never washes out.
  */
 val AmoledTokens = ThemeTokens(
     colors = ThemeColors(
         background = Color(0xFF000000),
-        surface = Color(0xFF0C0C0F),
-        surfaceTranslucent = Color(0xE6000000),
-        textPrimary = Color(0xFFFAFAFC),
-        textSecondary = Color(0xFF9A9AA6),
-        accent = Color(0xFF8B8BF0),
-        danger = Color(0xFFF06565),
-        outline = Color(0x2EFFFFFF)
+        surface = Color(0xFF141210),
+        surfaceTranslucent = Color(0xE6141210),
+        textPrimary = Color(0xFFF5ECDD),
+        textSecondary = Color(0xFF9E968A),
+        accent = Color(0xFFD67C52),
+        danger = Color(0xFFF0655A),
+        outline = Color(0x2EF2E7D5)
     ),
     elevation = ThemeElevationAlphas(
         translucentTint = 0.66f,
@@ -115,19 +125,19 @@ val AmoledTokens = ThemeTokens(
 )
 
 /**
- * Grey / graphite (PLAN.md §9): soft dark-grey, lower contrast than Dark, easier on
- * the eyes at night without the hard black of AMOLED.
+ * Grey / graphite with a warm undertone (PLAN.md §9): soft warm graphite, lower
+ * contrast than Dark, easier on the eyes at night without the hard black of AMOLED.
  */
 val GreyTokens = ThemeTokens(
     colors = ThemeColors(
-        background = Color(0xFF1B1C20),
-        surface = Color(0xFF26272D),
-        surfaceTranslucent = Color(0xB326272D),
-        textPrimary = Color(0xFFECECEF),
-        textSecondary = Color(0xFFA6A7B0),
-        accent = Color(0xFF9A9AF2),
-        danger = Color(0xFFF07070),
-        outline = Color(0x1FFFFFFF)
+        background = Color(0xFF211F1C),
+        surface = Color(0xFF2B2825),
+        surfaceTranslucent = Color(0xB32B2825),
+        textPrimary = Color(0xFFECE5D9),
+        textSecondary = Color(0xFFABA292),
+        accent = Color(0xFFD2764E),
+        danger = Color(0xFFEE6F62),
+        outline = Color(0x1FF2E7D5)
     ),
     elevation = ThemeElevationAlphas(
         translucentTint = 0.62f,

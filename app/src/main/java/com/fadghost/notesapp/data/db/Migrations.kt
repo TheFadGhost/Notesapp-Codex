@@ -90,3 +90,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_AudioAttachment_noteId` ON `AudioAttachment` (`noteId`)")
     }
 }
+
+/**
+ * v5 -> v6: rebuild the search index as FTS4. Every earlier version declared
+ * `USING fts5`, which crashes at CREATE on Android's framework SQLite (the
+ * module isn't compiled in) — the cause of the v1.0.0 first-launch crash.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        NotesFts.migrateToFts4(db)
+    }
+}

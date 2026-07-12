@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_bg">#0B0B0F</color>
-    <color name="ic_launcher_background">#5B5BD6</color>
+    <color name="window_bg">#1C1A17</color>
+    <!-- Deep charcoal ink — makes the cream note glyph pop; no AI-default periwinkle. -->
+    <color name="ic_launcher_bg">#23272E</color>
 </resources>
