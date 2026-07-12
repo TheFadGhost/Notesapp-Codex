@@ -306,7 +306,12 @@ fun AppShell(
         // shifting ~95px). Tab slots are computed from the screen width so all four tabs
         // fit and shrink evenly instead of a tab dropping off at 320dp (P0-2). Both fade
         // out while the editor is open.
-        val slotWidth = navTabSlotWidth(LocalConfiguration.current.screenWidthDp.dp)
+        val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+        // Width-only: identical on every tab so the pill anchor never shifts between tabs.
+        // At ultra-narrow widths (≈122dp, the 320px repro) the FAB is dropped so all four
+        // tabs keep equal, on-screen, tappable widths instead of clipping off the edge.
+        val fabReserved = navShowFab(screenWidth)
+        val slotWidth = navTabSlotWidth(screenWidth, fabReserved)
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -331,8 +336,9 @@ fun AppShell(
                 )
             }
             // Reserve the FAB's slot on every tab (kept empty on Settings) so the pill never
-            // shifts sideways between tabs. The FAB itself only draws when the tab has one.
-            if (editorNoteId == null) {
+            // shifts sideways between tabs. Dropped entirely at ultra-narrow widths where it
+            // would push a tab off-screen. The FAB itself only draws when the tab has one.
+            if (editorNoteId == null && fabReserved) {
                 Spacer(Modifier.width(NavFabGap))
                 Box(Modifier.size(NavFabSize), contentAlignment = Alignment.Center) {
                     if (fabMode.visible) {

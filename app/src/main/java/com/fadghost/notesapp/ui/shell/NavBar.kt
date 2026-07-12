@@ -72,6 +72,12 @@ fun AuraNavBar(
     // Tab centre X relative to the pill's inner (post-padding) content box.
     fun centerFor(i: Int) = i * slotPx + slotPx / 2f
 
+    // Pin the pill to exactly its content (padding + four equal slots) so it never
+    // stretches wider than the tabs and leaves dead space that the last tab's touch
+    // target absorbs — at ultra-narrow widths that dead space pushed the icons left of
+    // centre (P0-2). With this, all four tabs fill the pill evenly and it centres cleanly.
+    val pillWidth = NavPillHPadding * 2 + slotWidth * NavTab.entries.size
+
     val selIndex = NavTab.entries.indexOf(selected)
     val bubbleX = remember { Animatable(centerFor(selIndex)) }
     val swayX = remember { Animatable(0f) }
@@ -98,6 +104,7 @@ fun AuraNavBar(
     Box(
         modifier = modifier
             .height(64.dp)
+            .width(pillWidth)
             .clip(RoundedCornerShape(tokens.radii.pill))
             .background(tokens.colors.surfaceTranslucent)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
