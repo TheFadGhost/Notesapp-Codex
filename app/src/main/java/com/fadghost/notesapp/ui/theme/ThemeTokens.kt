@@ -174,19 +174,20 @@ val AmoledTokens = ThemeTokens(
 )
 
 /**
- * Grey / graphite with a warm undertone (PLAN.md §9): soft warm graphite, lower
- * contrast than Dark, easier on the eyes at night without the hard black of AMOLED.
+ * Grey / graphite with a warm undertone (PLAN.md §9): a genuine mid graphite, clearly
+ * lighter than Dark's espresso-charcoal (RGB 28,26,23) so the two themes read as
+ * distinct — background is RGB 60,56,51 (still warm, R>G>B), softer than AMOLED's black.
  */
 val GreyTokens = ThemeTokens(
     colors = ThemeColors(
-        background = Color(0xFF211F1C),
-        surface = Color(0xFF2B2825),
-        surfaceTranslucent = Color(0xB32B2825),
+        background = Color(0xFF3C3833),
+        surface = Color(0xFF4A453F),
+        surfaceTranslucent = Color(0xB34A453F),
         textPrimary = Color(0xFFECE5D9),
-        textSecondary = Color(0xFFABA292),
+        textSecondary = Color(0xFFB4AB9A),
         accent = Color(0xFFD2764E),
         danger = Color(0xFFEE6F62),
-        outline = Color(0x1FF2E7D5)
+        outline = Color(0x24F2E7D5)
     ),
     elevation = ThemeElevationAlphas(
         translucentTint = 0.62f,

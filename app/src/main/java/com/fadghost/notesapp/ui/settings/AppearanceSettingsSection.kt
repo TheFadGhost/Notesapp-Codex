@@ -10,6 +10,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,6 +63,7 @@ import com.fadghost.notesapp.ui.theme.ThemeTokens
  * toggle. Uses its own Activity-scoped [MainViewModel] instance so it stays in sync
  * with the root theme state.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
     val tokens = Aura.tokens
@@ -83,9 +86,15 @@ fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
 
         BasicText("Theme", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(ThemeMode.entries.size) { i ->
-                val m = ThemeMode.entries[i]
+        // Wrap every swatch into view instead of a horizontally-scrolling row that hid the
+        // last options off-screen with no affordance (P2-5): all five are now reachable
+        // without scrolling, flowing onto a second line on narrow widths.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ThemeMode.entries.forEach { m ->
                 ThemeSwatchCard(
                     mode = m,
                     preview = ThemeResolver.baseTokens(m, systemDark),
