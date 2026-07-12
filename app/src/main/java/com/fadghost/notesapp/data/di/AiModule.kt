@@ -1,5 +1,7 @@
 package com.fadghost.notesapp.data.di
 
+import android.util.Log
+import com.fadghost.notesapp.BuildConfig
 import com.fadghost.notesapp.data.ai.KeystoreCrypto
 import com.fadghost.notesapp.data.ai.net.OpenRouterClient
 import dagger.Module
@@ -9,6 +11,10 @@ import dagger.hilt.components.SingletonComponent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
+import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
@@ -28,6 +34,12 @@ object AiModule {
         ignoreUnknownKeys = true
         explicitNulls = false
         isLenient = true
+        // MUST stay true: OpenRouter validates request params strictly. Default-valued
+        // flags like usage.include=true / reasoning.exclude=true would otherwise be
+        // dropped from the wire, yielding `"usage":{}` — which OpenRouter 400-rejects
+        // ("usage.include: Invalid input: expected boolean, received undefined") — and
+        // silently no-ops reasoning exclusion. Keep every request default on the wire.
+        encodeDefaults = true
     }
 
     @Provides
@@ -43,6 +55,18 @@ object AiModule {
             }
         }
         install(ContentNegotiation) { json(json) }
+        // Debug-only wire logging so the exact OpenRouter request/response can be
+        // inspected in logcat. The Authorization header (bearer key) is redacted via
+        // sanitizeHeader, so the API key is NEVER written to the log.
+        if (BuildConfig.DEBUG) {
+            install(Logging) {
+                logger = object : Logger {
+                    override fun log(message: String) { Log.d("OpenRouterHTTP", message) }
+                }
+                level = LogLevel.ALL
+                sanitizeHeader { header -> header == HttpHeaders.Authorization }
+            }
+        }
     }
 
     @Provides

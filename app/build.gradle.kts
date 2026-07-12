@@ -65,6 +65,8 @@ android {
 
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG gates the (key-redacted) OpenRouter HTTP logger.
+        buildConfig = true
     }
 
     // Expose exported Room schemas to migration tests.
@@ -126,6 +128,8 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
+    // Debug-only, key-redacted request/response logging for the OpenRouter client.
+    implementation(libs.ktor.client.logging)
 
     // Test
     testImplementation(libs.junit)
