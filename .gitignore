@@ -13,3 +13,6 @@ local.properties
 *.jks
 
 .claude/
+
+# Internal planning docs — never publish to the public repo
+V3-PROMPTS.md
