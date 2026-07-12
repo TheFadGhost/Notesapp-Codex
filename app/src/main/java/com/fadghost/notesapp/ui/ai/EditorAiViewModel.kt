@@ -121,7 +121,17 @@ class EditorAiViewModel @Inject constructor(
                         is OpenRouterClient.Stream.Delta ->
                             _cleanup.value = _cleanup.value.copy(after = _cleanup.value.after + ev.text)
                         is OpenRouterClient.Stream.Completed ->
-                            _cleanup.value = _cleanup.value.copy(streaming = false, done = true)
+                            // A reasoning variant can finish with no visible content
+                            // (finish_reason "length"). Never present that as a result —
+                            // surface a retryable error instead of an empty "after" (item 8).
+                            _cleanup.value = if (_cleanup.value.after.isBlank()) {
+                                _cleanup.value.copy(
+                                    streaming = false,
+                                    error = "The model returned nothing. Try again."
+                                )
+                            } else {
+                                _cleanup.value.copy(streaming = false, done = true)
+                            }
                     }
                 }
             } catch (e: Exception) {

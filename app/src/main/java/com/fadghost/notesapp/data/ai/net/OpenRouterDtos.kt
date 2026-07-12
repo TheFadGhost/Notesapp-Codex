@@ -15,7 +15,10 @@ import kotlinx.serialization.json.JsonObject
 @Serializable
 data class ChatMessage(
     val role: String,
-    val content: String
+    // Nullable: reasoning variants can return a message with null `content` (the budget
+    // went to a hidden reasoning field). Modelling it as non-null made deserialization
+    // throw before the null could be handled (item 8). Requests always set it.
+    val content: String? = null
 ) {
     companion object {
         fun system(text: String) = ChatMessage("system", text)
@@ -32,9 +35,21 @@ data class ChatRequest(
     val temperature: Double? = null,
     @SerialName("max_tokens") val maxTokens: Int? = null,
     @SerialName("response_format") val responseFormat: ResponseFormat? = null,
+    /**
+     * Reasoning control. Newer "flash" models (e.g. `deepseek-v4-flash-20260423`) are
+     * reasoning variants that spend the token budget on a hidden `reasoning` field and
+     * return null `content` with finish_reason "length" when `max_tokens` is small. We
+     * always pass `{"exclude": true}` so the budget goes to visible content; if a
+     * provider rejects the param the client retries once with this set to null.
+     */
+    val reasoning: ReasoningRequest? = null,
     /** Ask OpenRouter to include token usage on the final SSE frame too. */
     val usage: UsageRequest? = null
 )
+
+/** Reasoning toggle: `exclude=true` keeps chain-of-thought out of the token budget/output. */
+@Serializable
+data class ReasoningRequest(val exclude: Boolean = true)
 
 /** Opt into usage accounting on streamed responses. */
 @Serializable

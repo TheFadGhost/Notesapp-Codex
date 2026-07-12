@@ -77,7 +77,7 @@ class OpenRouterClient(
      * (a partial stream is surfaced to the caller instead).
      */
     fun streamCleanup(apiKey: String, request: ChatRequest): Flow<Stream> = flow {
-        val body = request.copy(stream = true, usage = UsageRequest(include = true))
+        var body = request.copy(stream = true, usage = UsageRequest(include = true))
         var attempt = 0
         while (true) {
             try {
@@ -102,6 +102,11 @@ class OpenRouterClient(
             } catch (c: CancellationException) {
                 throw c
             } catch (e: OpenRouterError) {
+                // Provider rejected the `reasoning` param → retry once without it (item 8).
+                if (body.reasoning != null && isParamRejection(e)) {
+                    body = body.copy(reasoning = null)
+                    continue
+                }
                 throw e
             } catch (e: Exception) {
                 throw OpenRouterError.Network(e.message)
@@ -131,16 +136,22 @@ class OpenRouterClient(
     // --- Non-streaming completion (Extract + Clean-up reduce) -------------------
 
     /** Non-streaming completion; returns raw assistant content + usage for parsing. */
-    suspend fun complete(apiKey: String, request: ChatRequest): StructuredResult = withRetry {
-        val resp = http.preparePost("${config.baseUrl}/chat/completions") {
-            authHeaders(apiKey)
-            contentType(ContentType.Application.Json)
-            setBody(request.copy(stream = false))
-        }.execute { it.toChatResponseOrThrow(request.model) }
-        val content = resp.firstContent
-            ?: throw OpenRouterError.Parse("empty completion")
-        StructuredResult(content, resp.usage)
-    }
+    suspend fun complete(apiKey: String, request: ChatRequest): StructuredResult =
+        withReasoningFallback(request) { req ->
+            withRetry {
+                val resp = http.preparePost("${config.baseUrl}/chat/completions") {
+                    authHeaders(apiKey)
+                    contentType(ContentType.Application.Json)
+                    setBody(req.copy(stream = false))
+                }.execute { it.toChatResponseOrThrow(req.model) }
+                // Reasoning models can return null/blank content (finish_reason "length").
+                // Treat that as a transient failure so withRetry re-asks instead of ever
+                // surfacing "null" to the note (item 8).
+                val content = resp.firstContent?.takeIf { it.isNotBlank() }
+                    ?: throw EmptyCompletion()
+                StructuredResult(content, resp.usage)
+            }
+        }
 
     // --- Transcription (STT, multipart upload) ----------------------------------
 
@@ -194,6 +205,26 @@ class OpenRouterClient(
         return runCatching { body<ChatResponse>() }.getOrElse { throw OpenRouterError.Parse(it.message) }
     }
 
+    /**
+     * Run [block]; if the provider rejects the request specifically because of the
+     * `reasoning` param (a 4xx while we sent one), retry ONCE with reasoning stripped
+     * (item 8). Any other error, or a request that never carried reasoning, passes
+     * straight through.
+     */
+    private suspend fun <T> withReasoningFallback(request: ChatRequest, block: suspend (ChatRequest) -> T): T =
+        try {
+            block(request)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: OpenRouterError) {
+            if (request.reasoning != null && isParamRejection(e)) block(request.copy(reasoning = null))
+            else throw e
+        }
+
+    /** A 4xx that plausibly means "I don't accept that request parameter". */
+    private fun isParamRejection(e: OpenRouterError): Boolean =
+        e is OpenRouterError.ModelUnavailable || (e is OpenRouterError.Unknown && e.status in 400..422)
+
     /** Retry wrapper for unary suspend calls on 429/5xx with exponential backoff. */
     private suspend fun <T> withRetry(block: suspend () -> T): T {
         var attempt = 0
@@ -240,6 +271,9 @@ class OpenRouterClient(
     private fun HttpResponse.headersSafe(name: String): String? = headers[name]
 
     private class RetrySignal(val error: OpenRouterError) : Exception()
+
+    /** Null/blank assistant content — retryable inside [withRetry] (never rendered). */
+    private class EmptyCompletion : Exception("empty completion")
 }
 
 /** Small shim so [OpenRouterClient] can read the streaming body channel. */

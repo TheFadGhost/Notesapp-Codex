@@ -4,6 +4,7 @@ import com.fadghost.notesapp.data.ai.net.ChatMessage
 import com.fadghost.notesapp.data.ai.net.ChatRequest
 import com.fadghost.notesapp.data.ai.net.OpenRouterClient
 import com.fadghost.notesapp.data.ai.net.OpenRouterError
+import com.fadghost.notesapp.data.ai.net.ReasoningRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -116,6 +117,31 @@ class OpenRouterClientTest {
         assertEquals(2, models.size)
         assertEquals("deepseek/deepseek-v4-flash", models[0].id)
         assertEquals(64000, models[0].contextLength)
+    }
+
+    @Test fun reasoningParamRejectionRetriesWithoutIt() = runTest {
+        // A provider that 400s the first (reasoning-carrying) request but accepts the retry
+        // once the param is stripped (item 8).
+        val calls = AtomicInteger(0)
+        val ok = """{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"total_tokens":3}}"""
+        val c = client {
+            if (calls.getAndIncrement() == 0) respond("bad param", HttpStatusCode.BadRequest, jsonHeaders)
+            else respond(ok, HttpStatusCode.OK, jsonHeaders)
+        }
+        val res = c.complete("k", req().copy(reasoning = ReasoningRequest(exclude = true)))
+        assertEquals("ok", res.content)
+        assertEquals(2, calls.get()) // one rejection + one stripped retry
+    }
+
+    @Test fun emptyContentIsTreatedAsRetryableThenSoftFails() = runTest {
+        // Reasoning variant that returns null content (finish_reason "length"): must never
+        // surface "null" — it retries, then fails soft as a Network error (item 8).
+        val calls = AtomicInteger(0)
+        val empty = """{"choices":[{"message":{"role":"assistant","content":null}}],"usage":{"total_tokens":1}}"""
+        val c = client { calls.getAndIncrement(); respond(empty, HttpStatusCode.OK, jsonHeaders) }
+        val err = runCatching { c.complete("k", req()) }.exceptionOrNull()
+        assertTrue(err is OpenRouterError.Network)
+        assertTrue("should have retried the empty completion", calls.get() >= 2)
     }
 
     @Test fun testConnectionFailureIsCaptured() = runTest {

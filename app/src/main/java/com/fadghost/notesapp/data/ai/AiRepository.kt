@@ -7,6 +7,7 @@ import com.fadghost.notesapp.data.ai.net.ChatMessage
 import com.fadghost.notesapp.data.ai.net.ChatRequest
 import com.fadghost.notesapp.data.ai.net.OpenRouterClient
 import com.fadghost.notesapp.data.ai.net.OpenRouterModel
+import com.fadghost.notesapp.data.ai.net.ReasoningRequest
 import com.fadghost.notesapp.data.ai.net.ResponseFormat
 import com.fadghost.notesapp.data.ai.net.Usage
 import com.fadghost.notesapp.alarm.ReminderAlarm
@@ -206,6 +207,8 @@ class AiRepository @Inject constructor(
                 ChatMessage.user(text)
             ),
             temperature = 0.0,
+            maxTokens = MAX_TOKENS,
+            reasoning = ReasoningRequest(exclude = true),
             responseFormat = ResponseFormat.jsonSchema("actions", AiPrompts.EXTRACT_SCHEMA, strict = false)
         )
         val res = client.complete(key, req)
@@ -227,7 +230,9 @@ class AiRepository @Inject constructor(
         val req = ChatRequest(
             model = model,
             messages = listOf(ChatMessage.system(AiPrompts.reviseSystem(nowIso)), ChatMessage.user(payload)),
-            temperature = 0.0
+            temperature = 0.0,
+            maxTokens = MAX_TOKENS,
+            reasoning = ReasoningRequest(exclude = true)
         )
         val res = client.complete(key, req)
         recordCost(res.usage, model, FEATURE_EXTRACT, action.hashCode().toLong())
@@ -281,7 +286,11 @@ class AiRepository @Inject constructor(
     private fun chatRequest(model: String, system: String, user: String) = ChatRequest(
         model = model,
         messages = listOf(ChatMessage.system(system), ChatMessage.user(user)),
-        temperature = 0.2
+        temperature = 0.2,
+        // Generous ceiling: Clean-up rewrites can be long, and reasoning variants must
+        // have room for visible content once chain-of-thought is excluded (item 8).
+        maxTokens = CLEANUP_MAX_TOKENS,
+        reasoning = ReasoningRequest(exclude = true)
     )
 
     private fun zone(): ZoneId = ZoneId.systemDefault()
@@ -300,5 +309,11 @@ class AiRepository @Inject constructor(
         const val FEATURE_CLEANUP = "cleanup"
         const val FEATURE_EXTRACT = "extract"
         private const val DEFAULT_CONTEXT = 32000
+
+        /** Floor for structured/short calls; reasoning variants need ≥2048 (item 8). */
+        private const val MAX_TOKENS = 2048
+
+        /** Clean-up rewrites may be long — give them extra headroom above the floor. */
+        private const val CLEANUP_MAX_TOKENS = 4096
     }
 }
