@@ -1,6 +1,5 @@
 package com.fadghost.notesapp.data.ai.net
 
-import io.ktor.http.ContentDisposition
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.PartData
@@ -29,11 +28,19 @@ object TranscriptionForm {
 
     /**
      * Build the `multipart/form-data` parts for a transcription request: the `model`
-     * and `language` text fields plus the audio `file` part carrying [filename] and an
-     * `audio/m4a` content type. Built as explicit [PartData] (rather than the `formData`
-     * DSL) so the file part gets a single Content-Disposition with both `name` and
-     * `filename` — the DSL would emit a second Content-Disposition and drop the
-     * filename. Extracted so tests can assert fields/filename/content-type with no network.
+     * and `language` text fields plus the audio `file` part carrying [filename] and its
+     * content type.
+     *
+     * RFC 7578 requires every part to use `Content-Disposition: form-data` with QUOTED
+     * parameter values. OpenRouter's parser enforces this strictly: Ktor's
+     * `ContentDisposition.Inline` / `.File` render `inline` / `file` (and leave
+     * token-safe `name`/`filename` values unquoted), which the endpoint rejects with
+     * HTTP 400 "Invalid multipart/form-data body"; an unquoted `filename` even drops the
+     * whole `file` part ("Missing required file field"). Curl-verified: only fully
+     * quoted `form-data` parts return 200. Headers are therefore written verbatim as
+     * explicit [PartData] (not the `formData` DSL, which can emit a second
+     * Content-Disposition and drop the filename), so tests can assert
+     * fields/filename/content-type with no network.
      */
     fun parts(
         model: String,
@@ -42,14 +49,13 @@ object TranscriptionForm {
         language: String,
         contentType: String = CONTENT_TYPE
     ): List<PartData> {
+        fun quote(v: String): String = "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
         fun formField(name: String, value: String): PartData.FormItem = PartData.FormItem(
             value = value,
             dispose = {},
             partHeaders = Headers.build {
-                append(
-                    HttpHeaders.ContentDisposition,
-                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.Name, name).toString()
-                )
+                append(HttpHeaders.ContentDisposition, "form-data; name=${quote(name)}")
             }
         )
         val filePart = PartData.BinaryItem(
@@ -58,10 +64,7 @@ object TranscriptionForm {
             partHeaders = Headers.build {
                 append(
                     HttpHeaders.ContentDisposition,
-                    ContentDisposition.File
-                        .withParameter(ContentDisposition.Parameters.Name, "file")
-                        .withParameter(ContentDisposition.Parameters.FileName, filename)
-                        .toString()
+                    "form-data; name=${quote("file")}; filename=${quote(filename)}"
                 )
                 append(HttpHeaders.ContentType, contentType)
             }
