@@ -176,6 +176,33 @@ class OpenRouterClientTest {
         assertTrue(result.exceptionOrNull() is OpenRouterError.InvalidKey)
     }
 
+    // --- describeImage (M-A P7 — vision image indexing) -------------------------
+
+    @Test fun describeImageSendsImagePartVerbatimPromptAndParses() = runTest {
+        var seenBody: String? = null
+        val body = """{"choices":[{"message":{"role":"assistant","content":
+            "{\"ocr_text\":\"MILK 2.50\",\"description\":\"a supermarket receipt\",\"tags\":[\"receipt\"]}"}}],
+            "usage":{"total_tokens":9,"cost":0.0002}}"""
+        val c = client { req ->
+            seenBody = (req.body as io.ktor.http.content.TextContent).text
+            respond(body, HttpStatusCode.OK, jsonHeaders)
+        }
+        val res = c.describeImage(
+            apiKey = "k",
+            model = "google/gemini-2.5-flash",
+            dataUrl = "data:image/png;base64,QUJD",
+            systemPrompt = com.fadghost.notesapp.data.ai.AiPrompts.IMAGE_INDEX_V1,
+            userText = "Index this image.",
+            temperature = 0.1
+        )
+        assertTrue("parses assistant JSON content: ${res.content}", res.content.contains("MILK 2.50"))
+        val b = seenBody!!
+        assertTrue("image_url part on the wire: $b", b.contains("\"type\":\"image_url\""))
+        assertTrue("data url on the wire: $b", b.contains("data:image/png;base64,QUJD"))
+        assertTrue("verbatim P7 prompt on the wire: $b", b.contains("transcribe ALL legible text verbatim"))
+        assertTrue("temperature 0.1 on the wire: $b", b.contains("\"temperature\":0.1"))
+    }
+
     // --- listTranscriptionModels (item 9 — live STT model discovery) ------------
 
     @Test fun listTranscriptionModelsQueriesOutputModalitiesFilter() = runTest {
