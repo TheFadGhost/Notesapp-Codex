@@ -8,7 +8,8 @@ This document is a self-contained, secret-free handoff for continuing the **Note
 
 - Working repository: `C:\Users\Work\Documents\Notesapp\Notesapp Codex`
 - Original repository: `C:\Users\Work\Documents\Notesapp`
-- Intended public GitHub repository: `https://github.com/TheFadGhost/Notesapp-Codex`
+- Public GitHub repository: `https://github.com/TheFadGhost/Notesapp-Codex`
+- Private complete-history repository: `https://github.com/TheFadGhost/Notesapp-Codex-Private`
 - Original upstream repository: `https://github.com/TheFadGhost/Notesapp.git`
 - Main branch: `main`
 - Android package/application ID remains the existing project package so upgrades and migrations continue to work.
@@ -242,14 +243,15 @@ An AVD named `testphone` exists with API 36 Google APIs x86_64, 1080×2400 at 42
 
 ## 8. GitHub setup
 
-The intended remote layout is:
+The remote layout is:
 
 ```text
 origin    https://github.com/TheFadGhost/Notesapp-Codex.git
+private   https://github.com/TheFadGhost/Notesapp-Codex-Private.git
 upstream  https://github.com/TheFadGhost/Notesapp.git
 ```
 
-`origin` is the independent Codex continuation. `upstream` is reference-only unless the owner explicitly requests syncing.
+`origin` is the public Codex continuation. `private` contains the same complete committed history and hosts the signed APK release. `upstream` is reference-only unless the owner explicitly requests syncing.
 
 If a future AI must create the remote after GitHub CLI authentication:
 
@@ -266,6 +268,24 @@ git push -u origin main
 
 Before either command, confirm that the current directory is the Notesapp Codex repository and that no secret/private handoff is tracked.
 
-## 9. Definition of the current handoff state
+## 9. Private signed APK release
 
-Notesapp Codex v3.1 code is implemented, isolated in its own repository, documented, and prepared for a public `main` push. The remaining immediate operation is repository publication if it has not already happened. Future product work should start from v3.2 scope or from issues discovered during an owner-authorized real-device smoke test—not by rebuilding the completed v3.1 features.
+The private repository contains a GitHub Release tagged `v3.1.0`. Its release asset is the locally signed production APK built with:
+
+```powershell
+.\gradlew.bat assembleRelease --no-daemon
+```
+
+No unit tests, emulator run, on-device test, or debugging session was performed as part of this release request. Gradle's release assembly, release lint-vital tasks, packaging, and signing validation completed successfully.
+
+- Local build output: `app\build\outputs\apk\release\app-release.apk`
+- GitHub asset name: `Notesapp-Codex-v3.1.0.apk`
+- Size: 25,068,359 bytes
+- SHA-256: `846c23bd8484fa479b460ac5e35e1b9dd42f55564c830ef2b56cc0bd249e74b3`
+- Android signature: verified with APK Signature Scheme v2; one RSA-4096 signer
+
+The signing keystore and its properties remain external to both GitHub repositories. Do not attempt to recover or publish signing secrets from local configuration.
+
+## 10. Definition of the current handoff state
+
+Notesapp Codex v3.1 code is implemented, isolated in its own repository, documented, published to public and private GitHub repositories, and available as a signed APK release in the private repository. Future product work should start from v3.2 scope or from issues discovered during an owner-authorized real-device smoke test—not by rebuilding the completed v3.1 features.
