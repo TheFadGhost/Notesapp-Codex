@@ -34,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -73,13 +72,12 @@ private val PANEL_WIDTH = 280.dp
 
 /**
  * Standalone bottom-right FAB (V2-SPEC item 4). 60dp accent circle. Its action is
- * contextual (the shell decides); a long-press always opens the full capture panel.
- * Hides on scroll-down via [hidden] (translate off the right edge + fade).
+ * contextual (the shell decides); a long-press always opens the full capture panel. It
+ * remains visible during scrolling so the primary creation action is always within reach.
  */
 @Composable
 fun ContextualFab(
     panelOpen: Boolean,
-    hidden: Boolean,
     onPrimary: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
@@ -87,19 +85,6 @@ fun ContextualFab(
     val tokens = Aura.tokens
     val reduceMotion = LocalReduceMotion.current
     val haptics = rememberAuraHaptics()
-    val density = LocalDensity.current
-
-    val hideTarget = if (hidden && !panelOpen) with(density) { 88.dp.toPx() } else 0f
-    val hideX by animateFloatAsState(
-        hideTarget,
-        if (reduceMotion) tween(0) else tween(220),
-        label = "fabHide"
-    )
-    val fabAlpha by animateFloatAsState(
-        if (hidden && !panelOpen) 0f else 1f,
-        tween(if (reduceMotion) 0 else 180),
-        label = "fabAlpha"
-    )
     // "+" rotates toward "x" while the panel is open.
     val rotation by animateFloatAsState(
         if (panelOpen) 45f else 0f,
@@ -119,8 +104,6 @@ fun ContextualFab(
         modifier = modifier
             .size(FAB_SIZE)
             .graphicsLayer {
-                translationX = hideX
-                alpha = fabAlpha
                 scaleX = pressScale
                 scaleY = pressScale
             }

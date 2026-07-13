@@ -7,6 +7,8 @@ import androidx.compose.ui.unit.dp
 /** Floating nav pill geometry (single source of truth for the shell + its clearance). */
 val NavPillHeight: Dp = 64.dp
 val NavPillBottomMargin: Dp = 16.dp
+/** Extra space between a screen's final interactive row and the floating navigation. */
+val NavContentBottomGap: Dp = 24.dp
 
 /**
  * Bottom-right capture FAB geometry + the gap to the pill. Shared so the shell can

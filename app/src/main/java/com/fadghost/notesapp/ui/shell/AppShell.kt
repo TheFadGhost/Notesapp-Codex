@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,15 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.LaunchedEffect
@@ -94,10 +86,9 @@ fun AppShell(
     var showQuickReminder by remember { mutableStateOf(false) }
     var showVoiceCapture by remember { mutableStateOf(false) }
 
-    // Contextual FAB: behaviour + visibility follow the active tab (V2-SPEC item 4).
+    // Contextual FAB: behaviour follows the active tab. It remains available while a
+    // screen scrolls so the primary creation action is always within reach.
     val fabMode = fabModeFor(selectedTab)
-    var fabHidden by remember { mutableStateOf(false) }
-    LaunchedEffect(selectedTab) { fabHidden = false }
 
     // Capture paths (PLAN.md §6): tile / shortcuts / share → route into the shell.
     val captureRequest by CaptureLaunch.request.collectAsStateWithLifecycle()
@@ -165,8 +156,9 @@ fun AppShell(
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // Clearance every scrollable tab reserves at its bottom so its last rows clear the
     // floating nav pill instead of rendering through it (systemic collision fix): nav
-    // inset + pill height + the pill's bottom margin + a breathing gap.
-    val navPillClearance = navInset + NavPillHeight + NavPillBottomMargin + 16.dp
+    // inset + pill height + the pill's bottom margin + a breathing gap. Every primary tab
+    // consumes this one value rather than drawing through a shell-level overlay.
+    val navPillClearance = navInset + NavPillHeight + NavPillBottomMargin + NavContentBottomGap
 
     // Capture-panel "New diary entry" should land like the Diary FAB — focus today +
     // raise the IME (P2-5). We switch tabs, then (once DiaryScreen is subscribed) fire
@@ -176,17 +168,6 @@ fun AppShell(
         if (pendingDiaryFocus && selectedTab == NavTab.DIARY) {
             ShellSignals.send(NavTab.DIARY, ShellSignal.FAB_PRIMARY)
             pendingDiaryFocus = false
-        }
-    }
-
-    // Hide-on-scroll: watch child scroll direction and toggle the FAB (ux.md §2).
-    val fabNestedScroll = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -6f) fabHidden = true
-                else if (available.y > 6f) fabHidden = false
-                return Offset.Zero
-            }
         }
     }
 
@@ -209,7 +190,6 @@ fun AppShell(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(fabNestedScroll)
         ) {
             CompositionLocalProvider(LocalNavPillClearance provides navPillClearance) {
                 AnimatedContent(
@@ -245,48 +225,6 @@ fun AppShell(
                     }
                 }
             }
-        }
-
-        // Bottom fade: scrolling content dissolves into the background before it reaches
-        // the translucent floating pill, instead of showing through it (P0-1). Drawn over
-        // the content but under the pill/FAB, and shell-wide so every tab is treated the
-        // same. The gradient is fully OPAQUE from the pill's top edge downward (earlier it
-        // was still ~60% transparent there, so the week-strip / diary hint bled through the
-        // pill); the soft transition now lives entirely ABOVE the pill. Hidden with the
-        // pill while the editor overlay is up.
-        val pillBandHeight = navInset + NavPillBottomMargin + NavPillHeight
-        if (editorNoteId == null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(navPillClearance + 44.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            0.28f to tokens.colors.background,
-                            1f to tokens.colors.background
-                        )
-                    )
-            )
-            // Tap sink over the pill's touch band: content scrolled transiently behind the
-            // translucent pill (e.g. the Calendar week strip) must not steal taps aimed at
-            // the nav tabs (P0-1b). The pill + FAB are drawn AFTER this, so they still win
-            // their own footprint; only the gaps/margins beside them are absorbed. At rest,
-            // content clears this band (contentPadding == navPillClearance), so no real row
-            // is ever blocked.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(pillBandHeight)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {}
-                    )
-                    .clearAndSetSemantics {}
-            )
         }
 
         // Capture panel (below the FAB in z-order so the FAB stays tappable).
@@ -353,7 +291,6 @@ fun AppShell(
                     if (fabMode.visible) {
                         ContextualFab(
                             panelOpen = captureVisible,
-                            hidden = fabHidden,
                             onPrimary = {
                                 if (captureVisible) {
                                     captureVisible = false
