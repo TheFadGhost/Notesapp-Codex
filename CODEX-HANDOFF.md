@@ -14,7 +14,7 @@ This document is a self-contained, secret-free handoff for continuing the **Note
 - Main branch: `main`
 - Android package/application ID remains the existing project package so upgrades and migrations continue to work.
 - Root project name and visible app label are **Notesapp Codex**.
-- Current app version: `versionCode 5`, `versionName 3.1.0`.
+- Current app version: `versionCode 6`, `versionName 3.2.0`.
 
 The original repository locally excludes `/Notesapp Codex/`, so the new repository is independent and cannot accidentally be committed as a nested folder in the original project.
 
@@ -47,7 +47,7 @@ These are deliberate decisions and should be preserved unless the owner explicit
 - Primary phone target is an Oppo-sized 411dp layout. Compact 320dp behavior is also protected.
 - Ramble behavior is confirm-cards-first: transcribe → rewrite/organize → create note → present extracted actions for confirmation.
 - Background voice recording uses a foreground microphone service now.
-- Floating overlay bubble and spoken voice-stop are intentionally deferred to v3.2.
+- Voice Ramble has an optional Android-permission-gated floating overlay in v3.2. Spoken voice-stop remains out of scope.
 - Folder operations remain non-destructive; organization and restore behavior must not silently delete user data.
 - A date-only reminder such as “remind me on Friday” defaults to **08:00 in the captured local timezone**.
 - An appointment becomes an event. An intended task with a date becomes a reminder. Dateless extracted actions stay in the note.
@@ -188,7 +188,17 @@ Editor organization uses `ui/editor/OrganizePanel.kt` plus Editor screen/ViewMod
 
 Notes-list organization uses `ui/notes/OrganizeFilterPanel.kt`, FilterBar, and NotesScreen integration. Tags remain first; one Organize popup owns folders and special filters; folders are no longer duplicated in a parallel row; tag long-press management stays reachable; filter semantics remain single-choice.
 
-### 4.7 Privacy, release metadata, and repository hygiene
+### 4.7 v3.2 tag-first, overlay, model, and layout refinement
+
+- Organization is tag-only in the visible app. Folder data/storage/backup support is deliberately retained for backward compatibility and non-destructive handling of existing notes, but folder pickers, folder filters, and move-to-folder note actions were removed.
+- The Notes tag-filter button opens an anchored panel to choose tags or secondary views. Editor organization is tag-only.
+- A new completed Ramble note receives the ordinary `Rambler` tag atomically. Users can remove the tag from a note or delete the tag; it is recreated safely for a later ramble.
+- `SYSTEM_ALERT_WINDOW` is requested only for the optional Voice Ramble floating control. The Ramble sheet opens Android's per-app overlay permission screen. The service-owned overlay is draggable, tap toggles pause/resume, and long-press stops the active ramble. It is removed whenever capture ends.
+- The user-specified OpenRouter text and STT models are bundled as a Recommended group at the top of the model selectors. Existing defaults stay `deepseek/deepseek-v4-flash` and `openai/gpt-4o-mini-transcribe`; live-discovered models remain below the recommended group.
+- The contextual capture FAB no longer hides while scrolling. The shared navigation clearance removes the previous bottom fade/tap obstruction and reserves space on Notes, Diary, Calendar, Ask, and Settings.
+- Calendar reminder/event sheets lift above the floating navigation area, have a 64x40dp draggable handle with animation, and Agenda can collapse. Completed reminders no longer appear in the forward Agenda.
+
+### 4.8 Privacy, release metadata, and repository hygiene
 
 - Debug OpenRouter logging was reduced from full bodies to headers.
 - OpenRouter attribution uses `https://github.com/TheFadGhost/Notesapp-Codex` and title `Notesapp Codex`.
@@ -239,7 +249,7 @@ An AVD named `testphone` exists with API 36 Google APIs x86_64, 1080×2400 at 42
 6. Keep Aura controls and FTS4 unless the owner explicitly approves a product/architecture change.
 7. Keep commits narrow and review `git status` plus a secret-pattern scan before every public push.
 8. Do not rewrite or force-push shared history unless explicitly asked.
-9. Treat overlay recording controls and spoken stop as future v3.2 work, not missing v3.1 code.
+9. Treat spoken voice-stop as future work. The optional v3.2 floating ramble control is service-owned and permission-gated.
 
 ## 8. GitHub setup
 
@@ -268,9 +278,9 @@ git push -u origin main
 
 Before either command, confirm that the current directory is the Notesapp Codex repository and that no secret/private handoff is tracked.
 
-## 9. Private signed APK release
+## 9. Private signed APK releases
 
-The private repository contains a GitHub Release tagged `v3.1.0`. Its release asset is the locally signed production APK built with:
+The private repository contains the signed `v3.1.0` release. The current v3.2.0 release is created after this handoff update is committed and has its own checksum in its release notes. Every production asset is built locally with:
 
 ```powershell
 .\gradlew.bat assembleRelease --no-daemon
@@ -288,4 +298,4 @@ The signing keystore and its properties remain external to both GitHub repositor
 
 ## 10. Definition of the current handoff state
 
-Notesapp Codex v3.1 code is implemented, isolated in its own repository, documented, published to public and private GitHub repositories, and available as a signed APK release in the private repository. Future product work should start from v3.2 scope or from issues discovered during an owner-authorized real-device smoke test—not by rebuilding the completed v3.1 features.
+Notesapp Codex v3.2 code is implemented, isolated in its own repository, documented, and prepared for publication to public and private GitHub repositories plus a new signed private APK release. The last compile-only integration check passed; no emulator, device, or test suite run was performed for v3.2 by owner instruction. Future work should start from issues the owner finds during manual testing, not by rebuilding the completed v3.2 features.

@@ -183,6 +183,26 @@ class NotesRepository @Inject constructor(
         }
     }
 
+    /**
+     * Atomically ensures an ordinary tag exists and links it without removing the note's other
+     * tags. This makes system-created tags safe to retry after a worker/process interruption.
+     */
+    suspend fun ensureTagOnNote(noteId: Long, name: String, color: Int): Long {
+        val normalized = TagNames.normalize(name)
+        require(noteId > 0) { "Note id must be positive" }
+        require(normalized.isNotBlank()) { "Tag name cannot be blank" }
+        return db.withTransaction {
+            val tagId = tagDao.getByNormalizedName(normalized)?.id ?: run {
+                val inserted = tagDao.insert(Tag(name = normalized, color = color))
+                if (inserted != -1L) inserted
+                else tagDao.getByNormalizedName(normalized)?.id
+                    ?: error("Tag name collision could not be resolved")
+            }
+            tagDao.link(NoteTagCrossRef(noteId, tagId))
+            tagId
+        }
+    }
+
     suspend fun renameTag(id: Long, name: String) {
         val normalized = TagNames.normalize(name)
         require(normalized.isNotBlank()) { "Tag name cannot be blank" }

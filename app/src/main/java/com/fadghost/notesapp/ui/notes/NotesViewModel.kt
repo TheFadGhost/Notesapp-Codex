@@ -2,7 +2,6 @@ package com.fadghost.notesapp.ui.notes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.data.repo.NotesRepository
@@ -30,7 +29,6 @@ sealed interface NoteFilter {
     data object Untagged : NoteFilter
     data object Archived : NoteFilter
     data object Trash : NoteFilter
-    data class InFolder(val id: Long, val name: String) : NoteFilter
     data class WithTag(val id: Long, val name: String) : NoteFilter
 }
 
@@ -63,9 +61,6 @@ class NotesViewModel @Inject constructor(
     private val _snackbar = MutableStateFlow<UndoMessage?>(null)
     val snackbar: StateFlow<UndoMessage?> = _snackbar.asStateFlow()
     private var pendingUndo: (suspend () -> Unit)? = null
-
-    val folders: StateFlow<List<Folder>> =
-        repo.observeFolders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val tags: StateFlow<List<Tag>> =
         repo.observeTags().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -101,7 +96,6 @@ class NotesViewModel @Inject constructor(
         NoteFilter.Untagged -> repo.observeUntagged()
         NoteFilter.Archived -> repo.observeArchived()
         NoteFilter.Trash -> repo.observeTrash()
-        is NoteFilter.InFolder -> repo.observeByFolder(f.id)
         is NoteFilter.WithTag -> repo.observeByTag(f.id)
     }
 
@@ -137,8 +131,6 @@ class NotesViewModel @Inject constructor(
     }
 
     fun duplicate(id: Long) = viewModelScope.launch { repo.duplicate(id) }
-
-    fun moveToFolder(id: Long, folderId: Long?) = viewModelScope.launch { repo.moveToFolder(id, folderId) }
 
     fun restore(id: Long) = viewModelScope.launch { repo.restore(id) }
 

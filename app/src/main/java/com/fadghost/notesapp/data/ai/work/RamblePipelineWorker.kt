@@ -22,6 +22,7 @@ import com.fadghost.notesapp.data.audio.VoiceSessionPhase
 import com.fadghost.notesapp.data.audio.VoiceSessionStore
 import com.fadghost.notesapp.data.audio.VoiceTranscriber
 import com.fadghost.notesapp.data.repo.NotesRepository
+import com.fadghost.notesapp.data.repo.SystemTags
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -108,6 +109,13 @@ class RamblePipelineWorker(
                         body = requireNotNull(session.rewrittenBody),
                         updatedAt = System.currentTimeMillis()
                     )
+                )
+                // A Ramble note always starts under this ordinary tag. It remains removable by
+                // the user; retries merely guarantee the just-created voice note is classified.
+                ep.notesRepository().ensureTagOnNote(
+                    noteId = noteId,
+                    name = SystemTags.RAMBLER,
+                    color = SystemTags.RAMBLER_COLOR
                 )
                 session = requireNotNull(store.update(sessionId) { it.copy(noteCommitted = true) })
             }

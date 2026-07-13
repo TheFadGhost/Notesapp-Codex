@@ -98,7 +98,6 @@ fun EditorScreen(
 ) {
     val tokens = Aura.tokens
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val folders by viewModel.folders.collectAsStateWithLifecycle()
     val allTags by viewModel.allTags.collectAsStateWithLifecycle()
     val noteTags by viewModel.noteTags.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
@@ -353,11 +352,11 @@ fun EditorScreen(
                         }
                         MicAction(tint = tokens.colors.accent) { onVoice() }
                         IconAction(Glyph.PAPERCLIP, tint = tokens.colors.accent) { onAttach() }
-                        // Push the chips to the right of the cluster when there's room; use a
+                        // Push the tag control to the right of the cluster when there's room; use a
                         // fixed gap in the scrollable case (weight is invalid inside scroll).
                         if (scrollable) Spacer(Modifier.width(12.dp)) else Spacer(Modifier.weight(1f))
                         Box(Modifier.onGloballyPositioned { organizeAnchor = it.boundsInRoot() }) {
-                            OrganizeAction(active = state.folderId != null || noteTags.isNotEmpty()) {
+                            OrganizeAction(active = noteTags.isNotEmpty()) {
                                 focus.clearFocus()
                                 showOrganize = true
                             }
@@ -521,18 +520,8 @@ fun EditorScreen(
         if (showOrganize) {
             OrganizePanel(
                 anchorBounds = organizeAnchor,
-                folders = folders,
-                currentFolderId = state.folderId,
                 allTags = allTags,
                 assignedTagIds = noteTags.map { it.id }.toSet(),
-                onSelectFolder = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    viewModel.moveToFolder(it)
-                },
-                onCreateFolder = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    viewModel.createFolderAndMove(it)
-                },
                 onToggleTag = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.toggleTag(it)

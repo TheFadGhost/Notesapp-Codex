@@ -3,7 +3,6 @@ package com.fadghost.notesapp.ui.editor
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.data.prefs.DraftStore
@@ -67,9 +66,6 @@ class EditorViewModel @Inject constructor(
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
     private val noteIdFlow = MutableStateFlow(0L)
-
-    val folders: StateFlow<List<Folder>> =
-        repo.observeFolders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val allTags: StateFlow<List<Tag>> =
         repo.observeTags().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -251,26 +247,6 @@ class EditorViewModel @Inject constructor(
                 pendingTagIds = current
                 repo.setTagsForNote(id, current)
             }
-        }
-    }
-
-    fun createFolderAndMove(name: String) {
-        val normalized = normalizeOrganizeName(name)
-        if (normalized.isBlank()) return
-        viewModelScope.launch {
-            val folderId = repo.createFolder(normalized)
-            _state.value = _state.value.copy(folderId = folderId)
-            val id = ensurePersisted()
-            if (id > 0) repo.moveToFolder(id, folderId)
-        }
-    }
-
-    fun moveToFolder(folderId: Long?) {
-        if (_state.value.folderId == folderId) return
-        _state.value = _state.value.copy(folderId = folderId)
-        viewModelScope.launch {
-            val id = ensurePersisted()
-            if (id > 0) repo.moveToFolder(id, folderId)
         }
     }
 

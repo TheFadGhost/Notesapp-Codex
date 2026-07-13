@@ -77,12 +77,10 @@ fun NotesScreen(
     val query by viewModel.query.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val isGrid by viewModel.isGrid.collectAsStateWithLifecycle()
-    val folders by viewModel.folders.collectAsStateWithLifecycle()
     val tags by viewModel.tags.collectAsStateWithLifecycle()
     val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
 
     var menuFor by remember { mutableStateOf<NoteCardUi?>(null) }
-    var movingNote by remember { mutableStateOf<NoteCardUi?>(null) }
     var managingTag by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Tag?>(null) }
     var organizeFiltersAnchor by remember { mutableStateOf<Rect?>(null) }
     // Permanent (hard) delete is irreversible — unlike soft-delete it has no Undo, so it
@@ -232,7 +230,6 @@ fun NotesScreen(
                 items = contextItemsFor(
                     note,
                     viewModel,
-                    onMove = { movingNote = it },
                     onDeleteForever = { pendingForeverDelete = it }
                 ),
                 onDismiss = { menuFor = null }
@@ -246,14 +243,6 @@ fun NotesScreen(
                     pendingForeverDelete = null
                 },
                 onDismiss = { pendingForeverDelete = null }
-            )
-        }
-
-        movingNote?.let { note ->
-            FolderMoveOverlay(
-                folders = folders,
-                onPick = { folderId -> viewModel.moveToFolder(note.id, folderId); movingNote = null },
-                onDismiss = { movingNote = null }
             )
         }
 
@@ -273,7 +262,6 @@ fun NotesScreen(
             OrganizeFilterPanel(
                 anchorBounds = anchor,
                 filter = filter,
-                folders = folders,
                 tags = tags,
                 onSelect = viewModel::setFilter,
                 onManageTag = { tag ->
@@ -289,7 +277,6 @@ fun NotesScreen(
 private fun contextItemsFor(
     note: NoteCardUi,
     vm: NotesViewModel,
-    onMove: (NoteCardUi) -> Unit,
     onDeleteForever: (NoteCardUi) -> Unit
 ): List<ContextMenuItem> = if (note.inTrash) {
     listOf(
@@ -304,7 +291,6 @@ private fun contextItemsFor(
             if (note.archived) vm.unarchive(note.id) else vm.archive(note.id)
         },
         ContextMenuItem(Glyph.DUPLICATE, "Duplicate") { vm.duplicate(note.id) },
-        ContextMenuItem(Glyph.FOLDER, "Move to folder") { onMove(note) },
         ContextMenuItem(Glyph.TRASH, "Delete", danger = true) { vm.delete(note.id) }
     )
 }
@@ -374,48 +360,6 @@ private fun EmptyNotes(filter: NoteFilter, searching: Boolean, onCreate: () -> U
     )
 }
 
-@Composable
-private fun FolderMoveOverlay(
-    folders: List<com.fadghost.notesapp.data.db.entity.Folder>,
-    onPick: (Long?) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val tokens = Aura.tokens
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = tokens.elevation.scrim))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .auraFloatShadow(RoundedCornerShape(tokens.radii.lg))
-                .clip(RoundedCornerShape(tokens.radii.lg))
-                .background(tokens.colors.surface)
-                .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.lg))
-                .auraTopHighlight(tokens.radii.lg)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                )
-                .padding(20.dp)
-        ) {
-            BasicText("MOVE TO FOLDER", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
-            Spacer(Modifier.height(12.dp))
-            com.fadghost.notesapp.ui.components.FlowChips {
-                PlainChip("None", selected = false) { onPick(null) }
-                folders.forEach { f -> PlainChip(f.name, selected = false) { onPick(f.id) } }
-            }
-        }
-    }
-}
 
 /**
  * Irreversible confirm popover for permanent (hard) delete from Trash (Bug 3). Unlike

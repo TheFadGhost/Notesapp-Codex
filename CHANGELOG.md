@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses simple date-tagged releases rather than strict SemVer
 (it's a sideloaded personal app, not a library).
 
+## [v3.2.0] - 2026-07-13 - Tag-first refinement & floating voice controls
+
+### Added
+- Optional system-overlay controls for an active Voice Ramble. Grant Android's overlay permission, then tap the floating control to pause/resume or long-press it to finish.
+- A removable `Rambler` tag is attached automatically to newly completed ramble notes. If the tag is deleted, the next ramble safely recreates it.
+- The requested OpenRouter text and speech-to-text models appear in a **Recommended** group at the top of the Settings model pickers; live-discovered models remain available underneath.
+- Collapsible Agenda section; completed reminders leave the forward agenda while remaining visible on their selected day.
+
+### Changed
+- Note organization is now tag-only. Existing folder data is preserved for backward-compatible storage and backup, but folders are no longer offered in the editor, filters, or note actions.
+- The capture FAB stays visible while scrolling. Screen content consistently clears the floating navigation pill instead of falling behind a fade.
+- Event/reminder sheets lift above the navigation pill; their grab handle now has a usable drag-dismiss animation.
+
 ## [v3.1.0] - 2026-07-13 - Ramble, Ask & Reliability
 
 ### Added

@@ -15,6 +15,8 @@ object RecordingServiceClient {
     fun resume(context: Context, sessionId: String) = send(context, RecordingService.ACTION_RESUME, sessionId)
     fun stop(context: Context, sessionId: String) = send(context, RecordingService.ACTION_STOP, sessionId)
     fun discard(context: Context, sessionId: String) = send(context, RecordingService.ACTION_DISCARD, sessionId)
+    fun showRambleOverlay(context: Context, sessionId: String) =
+        send(context, RecordingService.ACTION_SHOW_RAMBLE_OVERLAY, sessionId)
 
     private fun send(context: Context, action: String, sessionId: String) {
         // These commands target an already-running service. Notification PendingIntents also
@@ -28,4 +30,3 @@ object RecordingServiceClient {
             putExtra(RecordingService.EXTRA_SESSION_ID, sessionId)
         }
 }
-

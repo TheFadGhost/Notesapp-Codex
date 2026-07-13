@@ -37,7 +37,7 @@ import com.fadghost.notesapp.ui.theme.Aura
 
 /**
  * Fast filters stay one-handed and scannable: All and tags scroll on the left,
- * while one pinned 48dp Organize control owns notebooks and secondary states.
+ * while one pinned 48dp tag filter control owns the remaining views.
  */
 @Composable
 fun FilterBar(
@@ -86,8 +86,7 @@ fun FilterBar(
 @Composable
 private fun OrganizeFilterButton(filter: NoteFilter, onClick: (Rect) -> Unit) {
     val tokens = Aura.tokens
-    val hiddenFilterSelected = filter is NoteFilter.InFolder ||
-        filter is NoteFilter.Untagged ||
+    val hiddenFilterSelected = filter is NoteFilter.Untagged ||
         filter is NoteFilter.Archived ||
         filter is NoteFilter.Trash
     val interaction = remember { MutableInteractionSource() }
@@ -113,17 +112,17 @@ private fun OrganizeFilterButton(filter: NoteFilter, onClick: (Rect) -> Unit) {
                 onClick = { onClick(anchorBounds) }
             )
             .semantics {
-                contentDescription = "Organize filters. ${noteFilterSummary(filter)} selected"
+                contentDescription = "Tag filters. ${noteFilterSummary(filter)} selected"
             },
         contentAlignment = Alignment.Center
     ) {
         AuraGlyph(
-            Glyph.FOLDER,
+            Glyph.TAG,
             if (hiddenFilterSelected) tokens.colors.accent else tokens.colors.textPrimary,
             Modifier.size(20.dp)
         )
-        // A small tag dot makes the combined tag/notebook purpose legible without
-        // turning the fixed 48dp control into another variable-width chip.
+        // A small tag dot makes the filtering purpose legible without turning the
+        // fixed 48dp control into another variable-width chip.
         Box(
             Modifier
                 .align(Alignment.BottomEnd)

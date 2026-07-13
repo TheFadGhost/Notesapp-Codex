@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.FlowChips
@@ -57,24 +56,20 @@ import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
 import kotlin.math.roundToInt
 
-/** Trim and collapse whitespace before a folder/tag name reaches persistence. */
+/** Trim and collapse whitespace before a tag name reaches persistence. */
 internal fun normalizeOrganizeName(raw: String): String =
     raw.trim().replace(Regex("\\s+"), " ")
 
 /**
- * One tags-forward assignment panel for the editor. It is positioned from the
+ * One tag-only assignment panel for the editor. It is positioned from the
  * measured trigger bounds, flips when needed, clamps to the window, and scrolls
  * within a bounded Aura card. Every selection applies immediately.
  */
 @Composable
 fun OrganizePanel(
     anchorBounds: Rect,
-    folders: List<Folder>,
-    currentFolderId: Long?,
     allTags: List<Tag>,
     assignedTagIds: Set<Long>,
-    onSelectFolder: (Long?) -> Unit,
-    onCreateFolder: (String) -> Unit,
     onToggleTag: (Long) -> Unit,
     onCreateTag: (String, Int) -> Unit,
     onDismiss: () -> Unit
@@ -82,7 +77,6 @@ fun OrganizePanel(
     val tokens = Aura.tokens
     val density = LocalDensity.current
     var tagInput by remember { mutableStateOf(TextFieldValue("")) }
-    var folderInput by remember { mutableStateOf(TextFieldValue("")) }
     var colorIndex by remember { mutableIntStateOf(0) }
 
     val searchable = allTags.size > 8
@@ -95,9 +89,8 @@ fun OrganizePanel(
             .toList()
     }
     val exactTagExists = allTags.any { it.name.equals(normalizedTag, ignoreCase = true) }
-    val currentFolder = folders.firstOrNull { it.id == currentFolderId }?.name ?: "Unfiled"
-    val summary = if (assignedTagIds.isEmpty()) "$currentFolder · No tags" else {
-        "$currentFolder · ${assignedTagIds.size} ${if (assignedTagIds.size == 1) "tag" else "tags"}"
+    val summary = if (assignedTagIds.isEmpty()) "No tags" else {
+        "${assignedTagIds.size} ${if (assignedTagIds.size == 1) "tag" else "tags"}"
     }
 
     Popup(
@@ -219,35 +212,6 @@ fun OrganizePanel(
                         }
                     )
                 }
-
-                Spacer(Modifier.height(18.dp))
-                Box(Modifier.fillMaxWidth().height(1.dp).background(tokens.colors.outline))
-                Spacer(Modifier.height(18.dp))
-
-                SectionLabel("Notebook")
-                FlowChips {
-                    PlainChip("None", selected = currentFolderId == null) {
-                        if (currentFolderId != null) onSelectFolder(null)
-                    }
-                    folders.sortedBy { it.name.lowercase() }.forEach { folder ->
-                        PlainChip(folder.name, selected = folder.id == currentFolderId) {
-                            if (folder.id != currentFolderId) onSelectFolder(folder.id)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                CreateRow(
-                    value = folderInput,
-                    onValueChange = { folderInput = it },
-                    placeholder = "New notebook",
-                    onAdd = {
-                        val name = normalizeOrganizeName(folderInput.text)
-                        if (name.isNotBlank()) {
-                            onCreateFolder(name)
-                            folderInput = TextFieldValue("")
-                        }
-                    }
-                )
             }
         }
     }

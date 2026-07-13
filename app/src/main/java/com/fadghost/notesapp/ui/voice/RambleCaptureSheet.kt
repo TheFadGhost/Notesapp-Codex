@@ -99,6 +99,7 @@ fun RambleCaptureSheet(
                 PackageManager.PERMISSION_GRANTED
         )
     }
+    var overlayGranted by remember(context) { mutableStateOf(Settings.canDrawOverlays(context)) }
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
     var editingCards by remember(state.sessionId) { mutableStateOf(emptySet<Long>()) }
 
@@ -129,6 +130,7 @@ fun RambleCaptureSheet(
                         context,
                         Manifest.permission.POST_NOTIFICATIONS
                     ) == PackageManager.PERMISSION_GRANTED
+                overlayGranted = Settings.canDrawOverlays(context)
                 if (permissionGranted) permissionDenied = false
             }
         }
@@ -151,6 +153,25 @@ fun RambleCaptureSheet(
 
     fun beginCapture() {
         if (permissionGranted && notificationsGranted) viewModel.startRamble() else requestPermission()
+    }
+
+    fun enableOverlay() {
+        if (overlayGranted) {
+            viewModel.showOverlay()
+        } else {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
+    // If the user returns from Android's overlay-permission screen mid-capture, ask the running
+    // foreground service to show its controls. This command is idempotent when already visible.
+    androidx.compose.runtime.LaunchedEffect(overlayGranted, state.sessionId, state.captureActive) {
+        if (overlayGranted && state.captureActive && state.sessionId != null) viewModel.showOverlay()
     }
 
     fun openCurrentNote() {
@@ -226,10 +247,12 @@ fun RambleCaptureSheet(
                     (state.phase == null && state.error == null && permissionGranted) -> RambleCaptureBody(
                     state = state,
                     notificationsGranted = notificationsGranted,
+                    overlayGranted = overlayGranted,
                     onStart = ::beginCapture,
                     onPause = viewModel::pause,
                     onResume = viewModel::resume,
                     onStop = viewModel::stop,
+                    onEnableOverlay = ::enableOverlay,
                     onDiscard = {
                         viewModel.discard()
                         onDismiss()
@@ -356,10 +379,12 @@ private fun RambleHeader(onDismiss: () -> Unit) {
 private fun RambleCaptureBody(
     state: RambleUiState,
     notificationsGranted: Boolean,
+    overlayGranted: Boolean,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onEnableOverlay: () -> Unit,
     onDiscard: () -> Unit
 ) {
     val tokens = Aura.tokens
@@ -451,7 +476,38 @@ private fun RambleCaptureBody(
                     textAlign = TextAlign.Center
                 )
             )
+            Spacer(Modifier.height(10.dp))
+            RambleOverlayControl(
+                enabled = overlayGranted,
+                onClick = onEnableOverlay
+            )
         }
+    }
+}
+
+@Composable
+private fun RambleOverlayControl(enabled: Boolean, onClick: () -> Unit) {
+    val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(tokens.radii.pill))
+            .background(tokens.colors.background)
+            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        AuraGlyph(Glyph.EXPAND, tokens.colors.accent, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        BasicText(
+            if (enabled) "Show floating controls" else "Enable floating controls",
+            style = AuraType.label.copy(color = tokens.colors.textPrimary)
+        )
     }
 }
 

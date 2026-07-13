@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.FlowChips
@@ -69,15 +68,14 @@ internal const val ORGANIZE_FILTER_SEARCH_THRESHOLD = 8
 /** User-facing description shared by the panel subtitle and trigger accessibility label. */
 internal fun noteFilterSummary(filter: NoteFilter): String = when (filter) {
     NoteFilter.All -> "All notes"
-    NoteFilter.Untagged -> "Unfiled / Untagged"
+    NoteFilter.Untagged -> "Untagged"
     NoteFilter.Archived -> "Archived notes"
     NoteFilter.Trash -> "Trash"
-    is NoteFilter.InFolder -> "Notebook · ${filter.name}"
     is NoteFilter.WithTag -> "Tag · #${filter.name}"
 }
 
-internal fun shouldSearchOrganizeFilters(tags: List<Tag>, folders: List<Folder>): Boolean =
-    tags.size + folders.size > ORGANIZE_FILTER_SEARCH_THRESHOLD
+internal fun shouldSearchOrganizeFilters(tags: List<Tag>): Boolean =
+    tags.size > ORGANIZE_FILTER_SEARCH_THRESHOLD
 
 /** Search and order are pure so large-list behaviour can be verified without Compose. */
 internal fun visibleOrganizeTags(
@@ -93,25 +91,10 @@ internal fun visibleOrganizeTags(
         .toList()
 }
 
-internal fun visibleOrganizeFolders(
-    folders: List<Folder>,
-    query: String,
-    selected: NoteFilter
-): List<Folder> {
-    val normalized = query.trim()
-    val selectedId = (selected as? NoteFilter.InFolder)?.id
-    return folders.asSequence()
-        .filter { normalized.isBlank() || it.name.contains(normalized, ignoreCase = true) }
-        .sortedWith(compareByDescending<Folder> { it.id == selectedId }.thenBy { it.name.lowercase() })
-        .toList()
-}
-
 internal fun filterForTag(tag: Tag): NoteFilter = NoteFilter.WithTag(tag.id, tag.name)
 
-internal fun filterForFolder(folder: Folder): NoteFilter = NoteFilter.InFolder(folder.id, folder.name)
-
 /**
- * Tags-first, single-selection filter panel for the list screen. It uses the measured
+ * Tag-only, single-selection filter panel for the list screen. It uses the measured
  * trigger bounds, flips above the trigger when needed, clamps to the window, and keeps
  * long collections searchable and vertically scrollable.
  */
@@ -119,7 +102,6 @@ internal fun filterForFolder(folder: Folder): NoteFilter = NoteFilter.InFolder(f
 fun OrganizeFilterPanel(
     anchorBounds: Rect,
     filter: NoteFilter,
-    folders: List<Folder>,
     tags: List<Tag>,
     onSelect: (NoteFilter) -> Unit,
     onManageTag: (Tag) -> Unit,
@@ -128,9 +110,8 @@ fun OrganizeFilterPanel(
     val tokens = Aura.tokens
     val density = LocalDensity.current
     var query by remember { mutableStateOf("") }
-    val searchable = shouldSearchOrganizeFilters(tags, folders)
+    val searchable = shouldSearchOrganizeFilters(tags)
     val visibleTags = remember(tags, query, filter) { visibleOrganizeTags(tags, query, filter) }
-    val visibleFolders = remember(folders, query, filter) { visibleOrganizeFolders(folders, query, filter) }
 
     Popup(
         alignment = Alignment.TopStart,
@@ -239,29 +220,13 @@ fun OrganizeFilterPanel(
                 }
 
                 FilterDivider()
-                FilterSectionLabel("Notebook")
+                FilterSectionLabel("Other")
                 FlowChips {
                     NoteFilterChip(
-                        label = "Unfiled / Untagged",
+                        label = "Untagged",
                         selected = filter is NoteFilter.Untagged,
                         onClick = { onSelect(NoteFilter.Untagged) }
                     )
-                    visibleFolders.forEach { folder ->
-                        NoteFilterChip(
-                            label = folder.name,
-                            selected = filter is NoteFilter.InFolder && filter.id == folder.id,
-                            onClick = { onSelect(filterForFolder(folder)) }
-                        )
-                    }
-                }
-                if (folders.isNotEmpty() && visibleFolders.isEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    BasicText("No matching notebooks.", style = AuraType.bodySm.copy(color = tokens.colors.textSecondary))
-                }
-
-                FilterDivider()
-                FilterSectionLabel("Other")
-                FlowChips {
                     NoteFilterChip(
                         label = "Archived",
                         selected = filter is NoteFilter.Archived,

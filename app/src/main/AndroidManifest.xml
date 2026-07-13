@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Optional v3.2 floating controls for an active Voice Ramble. The user grants this from
+         Android's system screen; the app never draws an overlay without that consent. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Calendar / reminders (PLAN.md §8). USE_EXACT_ALARM is auto-granted for this
          sideloaded app (Android 13+); SCHEDULE_EXACT_ALARM covers 12/12L. -->

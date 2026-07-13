@@ -180,6 +180,7 @@ class RambleViewModel @Inject constructor(
     fun pause() = selectedCommand(RecordingServiceClient::pause)
     fun resume() = selectedCommand(RecordingServiceClient::resume)
     fun stop() = selectedCommand(RecordingServiceClient::stop)
+    fun showOverlay() = selectedCommand(RecordingServiceClient::showRambleOverlay)
 
     fun discard() {
         val id = selectedId.value ?: sessions.sessions.value.firstOrNull(::isResumableRamble)?.id

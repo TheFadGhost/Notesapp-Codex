@@ -2,7 +2,7 @@
 
 Personal AI-powered notes, diary and calendar for Android — local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
 
-![version](https://img.shields.io/badge/version-v3.1.0-8a5a44?style=flat-square)
+![version](https://img.shields.io/badge/version-v3.2.0-8a5a44?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Android%2012%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![kotlin](https://img.shields.io/badge/Kotlin-2.1-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
@@ -16,20 +16,22 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 - Live-markdown editor (headings, bold/italic, checklists, smart lists) with a keyboard-docked formatting toolbar
 - Undo/redo, draft crash-recovery
 - Full-text search with highlights
-- Tags & folders (colors, merge), pin/archive
+- Tags with color, rename, merge and tag-filter panel; pin/archive
 - 30-day trash with undo everywhere
 
 **AI (bring your own OpenRouter key)**
 - Clean-up: streams a de-filler'd, structured rewrite of any ramble into a before/after sheet
 - Extract actions: pulls events/reminders/todos out of note text as confirm/deny cards with edit + free-text revision
 - Ask Folio: a fifth tab that searches notes + memory, streams grounded answers, and links personal claims back to their sources
-- Offline queueing, per-call cost tracking, model picker (default `deepseek/deepseek-v4-flash`)
+- Offline queueing, per-call cost tracking, model picker (default `deepseek/deepseek-v4-flash`) with recommended OpenRouter text and transcription models
 
 **Voice**
 - Record long voice rambles in a foreground service, including with the app backgrounded (auto-split 5-minute AAC segments)
 - Transcribe via OpenRouter STT (default `openai/gpt-4o-mini-transcribe`)
 - Folio rewrites each ramble into a note, then shows confirm cards before adding reminders/events
 - Tap-toggle or hold-to-talk recording; durable processing/review survives process death
+- Optional draggable system overlay controls for an active ramble (tap pause/resume; long-press stop), enabled through Android's overlay permission
+- Every completed ramble starts with a removable `Rambler` tag; deleting it from a note never affects the note itself
 - Existing-note transcripts still land with a circular audio chip and popover player
 
 **Calendar & reminders**

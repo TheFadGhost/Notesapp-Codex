@@ -57,6 +57,7 @@ class RecordingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val recorderLock = Mutex()
     private var active: ActiveRecording? = null
+    private var rambleOverlay: RambleOverlayController? = null
     private var lastNotificationSecond = -1L
 
     override fun onCreate() {
@@ -82,6 +83,7 @@ class RecordingService : Service() {
                 ACTION_RESUME -> resumeCapture(sessionId)
                 ACTION_STOP -> stopCapture(sessionId, enqueue = true)
                 ACTION_DISCARD -> discardCapture(sessionId)
+                ACTION_SHOW_RAMBLE_OVERLAY -> showRambleOverlay(sessionId)
             }
         }
         return START_NOT_STICKY
@@ -148,6 +150,7 @@ class RecordingService : Service() {
             val live = ActiveRecording(updated, recorder)
             active = live
             publish(live, VoiceSessionPhase.RECORDING)
+            showRambleOverlay(live)
             live.ticker = startTicker(live)
         }
     }
@@ -159,6 +162,7 @@ class RecordingService : Service() {
             if (!paused) return
             sessions.update(sessionId) { it.copy(phase = VoiceSessionPhase.PAUSED) }
             publish(live, VoiceSessionPhase.PAUSED)
+            rambleOverlay?.update(paused = true)
             notifyState(live, force = true)
         }
     }
@@ -170,6 +174,7 @@ class RecordingService : Service() {
             if (!resumed) return
             sessions.update(sessionId) { it.copy(phase = VoiceSessionPhase.RECORDING) }
             publish(live, VoiceSessionPhase.RECORDING)
+            rambleOverlay?.update(paused = false)
             notifyState(live, force = true)
         }
     }
@@ -328,6 +333,29 @@ class RecordingService : Service() {
         }
     }
 
+    /** Re-show after returning from Android's overlay-permission settings while capture is live. */
+    private fun showRambleOverlay(sessionId: String) {
+        activeFor(sessionId)?.let(::showRambleOverlay)
+    }
+
+    private fun showRambleOverlay(live: ActiveRecording) {
+        if (live.session.destination != VoiceDestination.RAMBLE_NOTE) return
+        val overlay = rambleOverlay ?: RambleOverlayController(
+            context = this,
+            onTogglePause = {
+                scope.launch {
+                    val current = active ?: return@launch
+                    if (current.recorder.isPaused) resumeCapture(current.session.id)
+                    else pauseCapture(current.session.id)
+                }
+            },
+            onStop = {
+                scope.launch { active?.session?.id?.let { stopCapture(it, enqueue = true) } }
+            }
+        ).also { rambleOverlay = it }
+        overlay.show(paused = live.recorder.isPaused)
+    }
+
     private fun audioDirectory(session: VoiceSession): File = when (session.destination) {
         VoiceDestination.RAMBLE_NOTE, VoiceDestination.NOTE_APPEND ->
             AudioStorage.recordingDir(filesDir, requireNotNull(session.targetNoteId), session.id)
@@ -347,6 +375,8 @@ class RecordingService : Service() {
     }
 
     private fun finishForeground(sessionId: String) {
+        rambleOverlay?.dismiss()
+        rambleOverlay = null
         sessions.clearRuntime(sessionId)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -393,6 +423,8 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        rambleOverlay?.dismiss()
+        rambleOverlay = null
         val interrupted = active
         active = null
         interrupted?.ticker?.cancel()
@@ -430,6 +462,7 @@ class RecordingService : Service() {
         const val ACTION_RESUME = "com.fadghost.notesapp.voice.RESUME"
         const val ACTION_STOP = "com.fadghost.notesapp.voice.STOP"
         const val ACTION_DISCARD = "com.fadghost.notesapp.voice.DISCARD"
+        const val ACTION_SHOW_RAMBLE_OVERLAY = "com.fadghost.notesapp.voice.SHOW_RAMBLE_OVERLAY"
         const val EXTRA_SESSION_ID = "voice_session_id"
 
         private const val CHANNEL_ID = "voice_recording"
