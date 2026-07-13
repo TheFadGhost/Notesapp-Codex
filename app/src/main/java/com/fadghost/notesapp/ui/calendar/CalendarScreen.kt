@@ -107,6 +107,7 @@ fun CalendarScreen(
     var visibleMonth by remember { mutableStateOf(YearMonth.from(selected)) }
 
     var draft by remember { mutableStateOf<ItemDraft?>(null) }
+    var agendaExpanded by rememberSaveable { mutableStateOf(true) }
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -173,7 +174,16 @@ fun CalendarScreen(
             zone
         )
     }
-    val agendaDays = remember(byDay) { byDay.keys.filter { !it.isBefore(today) }.sorted() }
+    // A completed reminder remains visible in its selected-day panel so it can be
+    // reopened or un-ticked, but it no longer clutters the forward-looking agenda.
+    val agendaByDay = remember(byDay) {
+        byDay.mapValues { (_, items) ->
+            items.filterNot { it.kind == CalendarKind.REMINDER && it.done }
+        }.filterValues { it.isNotEmpty() }
+    }
+    val agendaDays = remember(agendaByDay, today) {
+        agendaByDay.keys.filter { !it.isBefore(today) }.sorted()
+    }
     val hasAnything = data.events.isNotEmpty() || data.reminders.isNotEmpty()
 
     fun editItem(item: CalendarItem) {
@@ -281,22 +291,51 @@ fun CalendarScreen(
                 item(key = "empty") { CalendarEmptyState() }
             } else {
                 item(key = "agendatitle") {
-                    BasicText(
-                        "Agenda",
-                        style = AuraType.titleSm.copy(color = tokens.colors.textPrimary),
-                        modifier = Modifier.padding(top = 20.dp, bottom = 4.dp)
-                    )
-                }
-                agendaDays.forEach { day ->
-                    stickyHeader(key = "h_${day.toEpochDay()}") {
-                        DayHeader(day, today)
-                    }
-                    items(byDay[day].orEmpty(), key = { "${it.kind}_${it.baseId}_${it.startMillis}" }) { item ->
-                        AgendaRow(
-                            item = item, zone = zone,
-                            onClick = { editItem(item) },
-                            onToggleDone = { viewModel.setReminderDone(item.baseId, !item.done) }
+                    val agendaToggleInteraction = remember { MutableInteractionSource() }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 20.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BasicText(
+                            "Agenda",
+                            style = AuraType.titleSm.copy(color = tokens.colors.textPrimary)
                         )
+                        Spacer(Modifier.weight(1f))
+                        Box(
+                            Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(tokens.radii.pill))
+                                .auraPress(agendaToggleInteraction)
+                                .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+                                .clickable(
+                                    interactionSource = agendaToggleInteraction,
+                                    indication = null,
+                                    onClick = { agendaExpanded = !agendaExpanded }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AuraGlyph(
+                                if (agendaExpanded) Glyph.CHEVRON_UP else Glyph.CHEVRON_DOWN,
+                                tokens.colors.accent,
+                                Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                if (agendaExpanded) {
+                    agendaDays.forEach { day ->
+                        stickyHeader(key = "h_${day.toEpochDay()}") {
+                            DayHeader(day, today)
+                        }
+                        items(agendaByDay[day].orEmpty(), key = { "${it.kind}_${it.baseId}_${it.startMillis}" }) { item ->
+                            AgendaRow(
+                                item = item, zone = zone,
+                                onClick = { editItem(item) },
+                                onToggleDone = { viewModel.setReminderDone(item.baseId, !item.done) }
+                            )
+                        }
                     }
                 }
             }

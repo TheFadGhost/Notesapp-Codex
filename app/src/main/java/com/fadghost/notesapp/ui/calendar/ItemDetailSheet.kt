@@ -1,6 +1,7 @@
 package com.fadghost.notesapp.ui.calendar
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -11,6 +12,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -30,15 +32,20 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Recurrence
@@ -51,6 +58,7 @@ import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import kotlinx.coroutines.launch
 
 /**
  * Pure, testable save-gate for the create/edit sheet (ux.md P1-4). Kept free of any
@@ -100,13 +108,74 @@ fun ItemDetailSheet(
 ) {
     val tokens = Aura.tokens
     val visible = draft != null
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    // The handle owns a small, deliberate drag affordance. Keeping this offset on
+    // the sheet itself lets the form body remain a normal vertical scroller.
+    val dragOffsetY = remember { Animatable(0f) }
+    val dismissThreshold = with(density) { 88.dp.toPx() }
+    val dismissDistance = with(density) { 480.dp.toPx() }
+
+    LaunchedEffect(visible) {
+        if (!visible) dragOffsetY.snapTo(0f)
+    }
+
+    fun dismissWithAnimation() {
+        scope.launch {
+            dragOffsetY.animateTo(dismissDistance, tween(180))
+            onDismiss()
+            dragOffsetY.snapTo(0f)
+        }
+    }
+
+    val handleDrag = Modifier.pointerInput(dismissThreshold) {
+        detectVerticalDragGestures(
+            onDragStart = { scope.launch { dragOffsetY.stop() } },
+            onDragEnd = {
+                scope.launch {
+                    if (dragOffsetY.value >= dismissThreshold) {
+                        dragOffsetY.animateTo(dismissDistance, tween(160))
+                        onDismiss()
+                        dragOffsetY.snapTo(0f)
+                    } else {
+                        dragOffsetY.animateTo(
+                            0f,
+                            spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        )
+                    }
+                }
+            },
+            onDragCancel = {
+                scope.launch {
+                    dragOffsetY.animateTo(
+                        0f,
+                        spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        )
+                    )
+                }
+            }
+        ) { _, deltaY ->
+            scope.launch {
+                dragOffsetY.snapTo((dragOffsetY.value + deltaY).coerceAtLeast(0f))
+            }
+        }
+    }
 
     AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = tokens.elevation.scrim))
-                .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = ::dismissWithAnimation
+                ),
             contentAlignment = Alignment.BottomCenter
         ) {
             AnimatedVisibility(
@@ -115,7 +184,15 @@ fun ItemDetailSheet(
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(120))
             ) {
                 val seed = draft ?: return@AnimatedVisibility
-                SheetBody(seed, zone, onDismiss, onSave, onDelete)
+                SheetBody(
+                    seed = seed,
+                    zone = zone,
+                    onDismiss = ::dismissWithAnimation,
+                    onSave = onSave,
+                    onDelete = onDelete,
+                    dragOffsetY = dragOffsetY.value,
+                    handleDrag = handleDrag
+                )
             }
         }
     }
@@ -127,7 +204,9 @@ private fun SheetBody(
     zone: ZoneId,
     onDismiss: () -> Unit,
     onSave: (ItemDraft) -> Unit,
-    onDelete: (ItemDraft) -> Unit
+    onDelete: (ItemDraft) -> Unit,
+    dragOffsetY: Float,
+    handleDrag: Modifier
 ) {
     val tokens = Aura.tokens
     val isNew = seed.baseId == 0L
@@ -146,26 +225,38 @@ private fun SheetBody(
     Column(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { translationY = dragOffsetY }
             // imePadding OUTSIDE the surface lifts the whole bottom-anchored sheet above
             // the keyboard so the title/notes field and the action buttons stay visible.
             .imePadding()
+            // Lift the whole surface above the shell pill. Padding only the scroll
+            // content still allowed the form's action row to sit behind the nav fade.
+            .padding(bottom = navClearance)
             .clip(RoundedCornerShape(topStart = tokens.radii.lg, topEnd = tokens.radii.lg))
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(topStart = tokens.radii.lg, topEnd = tokens.radii.lg))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 20.dp, bottom = navClearance.coerceAtLeast(20.dp))
+            .padding(top = 20.dp, bottom = 20.dp)
     ) {
         // Grab handle.
         Box(
             Modifier
-                .padding(bottom = 14.dp)
-                .size(width = 40.dp, height = 4.dp)
-                .clip(RoundedCornerShape(tokens.radii.pill))
-                .background(tokens.colors.outline)
-                .align(Alignment.CenterHorizontally)
-        )
+                .then(handleDrag)
+                // A 64x40dp hit target makes the visible dash reliably draggable,
+                // instead of requiring a pixel-perfect grab on its 4dp stroke.
+                .size(width = 64.dp, height = 40.dp)
+                .align(Alignment.CenterHorizontally),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier
+                    .size(width = 40.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(tokens.radii.pill))
+                    .background(tokens.colors.outline)
+            )
+        }
 
         BasicText(
             if (isNew) "New ${kind.name.lowercase()}" else "Edit",
