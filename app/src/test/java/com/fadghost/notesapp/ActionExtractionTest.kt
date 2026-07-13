@@ -10,6 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneOffset
 
 class ActionExtractionTest {
@@ -92,5 +93,59 @@ class ActionExtractionTest {
         val v = ExtractionValidator()
         val millis = v.parseIso("2026-08-01 14:30", zone)
         assertEquals(Instant.parse("2026-08-01T14:30:00Z").toEpochMilli(), millis)
+    }
+
+    // --- Ramble default-time rule ("remind me at 8" for timeless days) --------------
+
+    @Test fun dateOnlyDefaultsToEightAmWhenConfigured() {
+        val v = ExtractionValidator(dateOnlyDefaultTime = LocalTime.of(8, 0))
+        val millis = v.parseIso("2026-08-01", zone)
+        assertEquals(Instant.parse("2026-08-01T08:00:00Z").toEpochMilli(), millis)
+    }
+
+    @Test fun dateOnlyStaysMidnightWithoutDefault() {
+        // The normal Extract flow is unchanged: no default → start-of-day (00:00).
+        val v = ExtractionValidator()
+        val millis = v.parseIso("2026-08-01", zone)
+        assertEquals(Instant.parse("2026-08-01T00:00:00Z").toEpochMilli(), millis)
+    }
+
+    @Test fun explicitTimeIsNeverOverriddenByDefault() {
+        // "gym at 6pm" must stay 18:00 even when the ramble default is set.
+        val v = ExtractionValidator(dateOnlyDefaultTime = LocalTime.of(8, 0))
+        assertEquals(
+            Instant.parse("2026-08-01T18:00:00Z").toEpochMilli(),
+            v.parseIso("2026-08-01T18:00:00Z", zone)
+        )
+        assertEquals(
+            Instant.parse("2026-08-01T14:30:00Z").toEpochMilli(),
+            v.parseIso("2026-08-01 14:30", zone)
+        )
+    }
+
+    @Test fun rambleValidatorArmsTimelessReminderAtEight() {
+        // End-to-end through validate(): "tomorrow, go gym" (date-only) → 08:00 reminder.
+        val v = ExtractionValidator(dateOnlyDefaultTime = LocalTime.of(8, 0))
+        val items = listOf(RawExtractItem(type = "reminder", title = "go gym", datetime = "2026-07-12"))
+        val out = v.validate(items, now, zone)
+        assertEquals(1, out.items.size)
+        assertEquals(ActionType.REMINDER, out.items[0].type)
+        assertEquals(
+            Instant.parse("2026-07-12T08:00:00Z").toEpochMilli(),
+            out.items[0].datetimeMillis
+        )
+    }
+
+    @Test fun ramblerParserWiresDefaultThroughToProposals() {
+        // The parser variant the ramble orchestrator constructs.
+        val rambleParser = ActionExtractionParser(
+            validator = ExtractionValidator(dateOnlyDefaultTime = LocalTime.of(8, 0))
+        )
+        val raw = """{"items":[{"type":"reminder","title":"call mum","datetime":"2026-07-12"}]}"""
+        val out = rambleParser.parse(raw, now, zone) as ExtractOutcome.Success
+        assertEquals(
+            Instant.parse("2026-07-12T08:00:00Z").toEpochMilli(),
+            out.items[0].datetimeMillis
+        )
     }
 }

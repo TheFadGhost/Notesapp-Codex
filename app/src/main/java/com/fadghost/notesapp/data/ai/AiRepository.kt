@@ -57,6 +57,13 @@ class AiRepository @Inject constructor(
     private val alarm: ReminderAlarm
 ) {
     private val extractionParser = ActionExtractionParser()
+    // Voice-ramble variant: a day with no clock time defaults to 08:00 (the owner's
+    // "remind me at 8" rule), while explicit times are honoured. See ActionExtraction.kt.
+    private val rambleExtractionParser = ActionExtractionParser(
+        validator = com.fadghost.notesapp.data.ai.parse.ExtractionValidator(
+            dateOnlyDefaultTime = java.time.LocalTime.of(8, 0)
+        )
+    )
     private val memoryParser = MemoryExtractionParser()
     private val inserter = ActionInserter(eventDao, reminderDao, alarm)
 
@@ -316,6 +323,79 @@ class AiRepository @Inject constructor(
             emit(ev)
         }
         recordCost(usage, model, FEATURE_REWRITE, noteId)
+    }
+
+    // --- Voice ramble → organized note + actions (feature A) --------------------
+
+    /**
+     * Non-streaming REWRITE_LEGIBLE_V1: turn a raw ramble transcript into one clean, bulleted
+     * markdown document. Used by the ramble flow, which needs the whole result at once to seed a
+     * NEW note (there's no live before/after sheet to stream into — the note IS the output).
+     * Same prompt/params as [rewriteStream]; cost recorded. Throws [OpenRouterError].
+     */
+    suspend fun rewriteOnce(text: String, noteId: Long?, now: Long): String {
+        val key = requireKey()
+        val model = prefs.textModel.first()
+        val req = ChatRequest(
+            model = model,
+            messages = listOf(
+                ChatMessage.system(AiPrompts.REWRITE_LEGIBLE_V1),
+                ChatMessage.system(AiPrompts.todayContext(now, zone())),
+                ChatMessage.user(text)
+            ),
+            temperature = 0.4,
+            maxTokens = REWRITE_MAX_TOKENS,
+            reasoning = ReasoningRequest(exclude = true)
+        )
+        val res = client.complete(key, req)
+        recordCost(res.usage, model, FEATURE_REWRITE, noteId)
+        return res.content
+    }
+
+    /**
+     * Extract actions from a ramble transcript using [AiPrompts.RAMBLE_EXTRACT_V1] and the
+     * 8am-default parser. Mirrors [extractActions] (defensive parse + one re-ask + truncation
+     * note) but keeps the working note-Extract path untouched. The caller shows the results as
+     * confirm cards BEFORE anything is armed (owner's choice: confirm-first).
+     */
+    suspend fun extractRambleActions(text: String, noteId: Long?, now: Long): ExtractOutcome {
+        val key = requireKey()
+        val model = prefs.textModel.first()
+        val context = contextLengthFor(model)
+        val truncated = truncateForExtract(text, context)
+        val wasTruncated = truncated.length < text.length
+
+        val first = runRambleExtract(key, model, truncated, noteId, now)
+        var outcome = rambleExtractionParser.parse(first, now, zone())
+        if (outcome is ExtractOutcome.ParseFailure) {
+            val retry = runRambleExtract(
+                key, model, truncated + "\n\nReturn ONLY the JSON object, nothing else.", noteId, now
+            )
+            outcome = rambleExtractionParser.parse(retry, now, zone())
+        }
+        return if (wasTruncated && outcome is ExtractOutcome.Success) {
+            outcome.copy(warnings = listOf("Ramble was long — action extraction ran on a truncated copy.") + outcome.warnings)
+        } else outcome
+    }
+
+    private suspend fun runRambleExtract(
+        key: String, model: String, text: String, noteId: Long?, now: Long
+    ): String {
+        val req = ChatRequest(
+            model = model,
+            messages = listOf(
+                ChatMessage.system(AiPrompts.RAMBLE_EXTRACT_V1),
+                ChatMessage.system(AiPrompts.todayContext(now, zone())),
+                ChatMessage.user(text)
+            ),
+            temperature = 0.0,
+            maxTokens = MAX_TOKENS,
+            reasoning = ReasoningRequest(exclude = true),
+            responseFormat = ResponseFormat.jsonSchema("actions", AiPrompts.EXTRACT_SCHEMA, strict = false)
+        )
+        val res = client.complete(key, req)
+        recordCost(res.usage, model, FEATURE_EXTRACT, noteId)
+        return res.content
     }
 
     // --- Add to memory (P1 MEMORY_EXTRACT_V1, structured output) ----------------

@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +45,7 @@ import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraDateTimePicker
 import com.fadghost.notesapp.ui.components.auraPress
+import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.Instant
@@ -114,6 +115,9 @@ private fun SheetBody(
 ) {
     val tokens = Aura.tokens
     val isNew = seed.baseId == 0L
+    // Clear the floating nav pill (inset + pill + margin + gap), not just the system
+    // nav bar — otherwise the Repeat row and Save/Create buttons render under the pill.
+    val navClearance = LocalNavPillClearance.current
 
     var kind by remember(seed) { mutableStateOf(seed.kind) }
     var title by remember(seed) { mutableStateOf(seed.title) }
@@ -125,13 +129,16 @@ private fun SheetBody(
     Column(
         Modifier
             .fillMaxWidth()
+            // imePadding OUTSIDE the surface lifts the whole bottom-anchored sheet above
+            // the keyboard so the title/notes field and the action buttons stay visible.
+            .imePadding()
             .clip(RoundedCornerShape(topStart = tokens.radii.lg, topEnd = tokens.radii.lg))
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(topStart = tokens.radii.lg, topEnd = tokens.radii.lg))
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
-            .navigationBarsPadding()
+            .padding(horizontal = 20.dp)
+            .padding(top = 20.dp, bottom = navClearance.coerceAtLeast(20.dp))
     ) {
         // Grab handle.
         Box(

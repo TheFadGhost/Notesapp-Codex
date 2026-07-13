@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -175,7 +176,11 @@ private fun DiaryContent(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            // imePadding: shrink the list viewport above the keyboard so the focused
+            // Today field auto-scrolls into view instead of hiding behind the IME
+            // (edge-to-edge means we consume the ime inset ourselves — same fix the
+            // editor's toolbar uses). navPillClearance keeps the tail above the pill.
+            modifier = Modifier.fillMaxSize().imePadding(),
             contentPadding = PaddingValues(
                 start = 20.dp, end = 20.dp, top = 4.dp, bottom = navPillClearance
             ),
@@ -545,6 +550,7 @@ private fun DiaryDayEditor(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 40.dp)

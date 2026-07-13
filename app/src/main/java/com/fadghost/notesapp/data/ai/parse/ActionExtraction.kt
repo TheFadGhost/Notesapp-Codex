@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -76,7 +77,16 @@ class ActionExtractionParser(
  */
 class ExtractionValidator(
     private val maxItems: Int = 10,
-    private val maxYears: Long = 5
+    private val maxYears: Long = 5,
+    /**
+     * When a datetime carries a DATE but no clock time (e.g. "tomorrow" → "2026-07-14"),
+     * this is the time-of-day it defaults to. Null keeps the legacy start-of-day (00:00)
+     * behaviour used by the normal Extract flow. The **voice ramble** flow passes
+     * `LocalTime.of(8, 0)` so "tomorrow I need to go gym" arms a reminder at 08:00 —
+     * the owner's stated rule ("makes a thing in calendar to remind me at 8"). Explicit
+     * times in the source are always honoured and never overridden.
+     */
+    private val dateOnlyDefaultTime: LocalTime? = null
 ) {
     fun validate(items: List<RawExtractItem>, now: Long, zone: ZoneId): ExtractOutcome.Success {
         val warnings = ArrayList<String>()
@@ -125,7 +135,12 @@ class ExtractionValidator(
             return LocalDateTime.parse(s).atZone(zone).toInstant().toEpochMilli()
         }
         runCatching {
-            return LocalDate.parse(s).atStartOfDay(zone).toInstant().toEpochMilli()
+            val date = LocalDate.parse(s)
+            // Date with no clock time: default to [dateOnlyDefaultTime] (08:00 for ramble)
+            // or midnight for the legacy path. Explicit-time strings never reach here —
+            // they matched an earlier branch above.
+            val ldt = dateOnlyDefaultTime?.let { date.atTime(it) } ?: date.atStartOfDay()
+            return ldt.atZone(zone).toInstant().toEpochMilli()
         }
         // Space-separated "yyyy-MM-dd HH:mm" fallback.
         runCatching {
