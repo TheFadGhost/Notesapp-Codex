@@ -280,7 +280,7 @@ Before either command, confirm that the current directory is the Notesapp Codex 
 
 ## 9. Private signed APK releases
 
-The private repository contains the signed `v3.1.0` release. The current v3.2.0 release is created after this handoff update is committed and has its own checksum in its release notes. Every production asset is built locally with:
+The private repository contains signed `v3.1.0` and `v3.2.0` releases. Every production asset is built locally with:
 
 ```powershell
 .\gradlew.bat assembleRelease --no-daemon
@@ -288,14 +288,23 @@ The private repository contains the signed `v3.1.0` release. The current v3.2.0 
 
 No unit tests, emulator run, on-device test, or debugging session was performed as part of this release request. Gradle's release assembly, release lint-vital tasks, packaging, and signing validation completed successfully.
 
+### v3.2.0
+
 - Local build output: `app\build\outputs\apk\release\app-release.apk`
+- GitHub asset name: `Notesapp-Codex-v3.2.0.apk`
+- Size: 25,068,387 bytes
+- SHA-256: `5c717037c439faa5a7fd2956cd4c97c5eb1445b2367936aa331eba93a3e86e55`
+- Android signature: verified with APK Signature Scheme v2; one RSA-4096 signer
+- Validation: compile-only integration check and signed release assembly passed; no unit, emulator, device, or manual feature testing was run.
+
+### v3.1.0
+
 - GitHub asset name: `Notesapp-Codex-v3.1.0.apk`
 - Size: 25,068,359 bytes
 - SHA-256: `846c23bd8484fa479b460ac5e35e1b9dd42f55564c830ef2b56cc0bd249e74b3`
-- Android signature: verified with APK Signature Scheme v2; one RSA-4096 signer
 
 The signing keystore and its properties remain external to both GitHub repositories. Do not attempt to recover or publish signing secrets from local configuration.
 
 ## 10. Definition of the current handoff state
 
-Notesapp Codex v3.2 code is implemented, isolated in its own repository, documented, and prepared for publication to public and private GitHub repositories plus a new signed private APK release. The last compile-only integration check passed; no emulator, device, or test suite run was performed for v3.2 by owner instruction. Future work should start from issues the owner finds during manual testing, not by rebuilding the completed v3.2 features.
+Notesapp Codex v3.2 code is implemented, isolated in its own repository, documented, published to public and private GitHub repositories, and available as a signed private APK release. The compile-only integration check and signed release assembly passed; no emulator, device, or test suite run was performed for v3.2 by owner instruction. Future work should start from issues the owner finds during manual testing, not by rebuilding the completed v3.2 features.
