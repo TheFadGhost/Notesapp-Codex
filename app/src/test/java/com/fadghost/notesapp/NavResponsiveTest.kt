@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.shell.NavFabGap
 import com.fadghost.notesapp.ui.shell.NavFabSize
 import com.fadghost.notesapp.ui.shell.NavPillHPadding
+import com.fadghost.notesapp.ui.shell.NavTab
 import com.fadghost.notesapp.ui.shell.NavTabSlotMax
 import com.fadghost.notesapp.ui.shell.navShowFab
 import com.fadghost.notesapp.ui.shell.navTabSlotWidth
@@ -16,12 +17,12 @@ import org.junit.Test
  * Responsive floating-nav geometry (P0-2). The catastrophic failure was at ≈122dp
  * effective width (`wm size 320x640` on a 2.625× device): a hard 46dp slot MIN forced a
  * 200dp pill that overflowed the screen, clipping the last tab and the FAB off the right
- * edge. These assert the cluster (pill + optional FAB) ALWAYS fits and all four tabs stay
+ * edge. These assert the cluster (pill + optional FAB) ALWAYS fits and all tabs stay
  * equal from the narrowest real repro up to wide screens.
  */
 class NavResponsiveTest {
 
-    private val tabs = 4
+    private val tabs = NavTab.entries.size
 
     /** pill + (gap + FAB when reserved) never exceeds the screen — no tab is ever clipped. */
     private fun assertFits(screenDp: Int) {
@@ -47,7 +48,7 @@ class NavResponsiveTest {
 
     @Test fun `fab dropped at ultra-narrow, kept at normal widths`() {
         assertFalse("no FAB room at 122dp", navShowFab(122.dp))
-        assertTrue("FAB seats at true 320dp", navShowFab(320.dp))
+        assertFalse("five tabs take priority over the FAB at 320dp", navShowFab(320.dp))
         assertTrue("FAB seats at normal 411dp", navShowFab(411.dp))
     }
 

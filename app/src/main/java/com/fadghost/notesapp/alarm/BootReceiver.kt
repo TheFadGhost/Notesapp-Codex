@@ -1,5 +1,6 @@
 package com.fadghost.notesapp.alarm
 
+import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,18 +20,31 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED -> {
+                if (intent.action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED &&
+                    !epCanSchedule(context)
+                ) return
                 NotificationChannels.ensure(context)
                 val pending = goAsync()
                 val ep = EntryPointAccessors.fromApplication(context.applicationContext, AlarmEntryPoint::class.java)
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         ep.alarmScheduler().rescheduleAll()
+                        ep.eventAlarm().rescheduleAll()
                     } finally {
                         pending.finish()
                     }
                 }
             }
         }
+    }
+
+    private fun epCanSchedule(context: Context): Boolean {
+        val ep = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            AlarmEntryPoint::class.java
+        )
+        return ep.alarmScheduler().canExact()
     }
 }

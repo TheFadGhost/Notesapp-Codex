@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses simple date-tagged releases rather than strict SemVer
 (it's a sideloaded personal app, not a library).
 
+## [v3.1.0] - 2026-07-13 - Ramble, Ask & Reliability
+
+### Added
+- Background-safe voice ramble recording with durable transcription, rewrite, and confirm-before-create action cards.
+- Transcript-only diary microphone that inserts at the current selection without creating a stray note.
+- A fifth **Ask Folio** tab with note/memory retrieval, streamed grounded answers, and source links.
+- Unified Organize panels for editor assignment and tags-first note-list filtering.
+- Event notification lead times and reminder source-note deep links.
+
+### Changed
+- Backup format v2 includes notes, Trash, folders, tags, diary entries, events, reminders, attachments, and memory, with strict bounded validation before restore.
+- App and repository identity is now **Notesapp Codex**; database schema is v9.
+- Date-only ramble actions default to 08:00 in the captured timezone.
+
+### Fixed
+- One-shot reminders and recurring event alerts can no longer notify twice after a restart.
+- Multiple voice captures no longer overwrite the same audio segment or queued transcription.
+- Debug HTTP logs never contain note, diary, transcript, image, or response bodies.
+- Linux CI can execute the Gradle wrapper.
+
+### Deferred
+- The optional system-overlay recording bubble and spoken “stop recording” remain intentionally scoped to v3.2.
+
 ## [v3.0.0] - 2026-07-12 - Attachments & Memory
 
 Adds image/file attachments and the first half of the Folio AI memory system, on top of a

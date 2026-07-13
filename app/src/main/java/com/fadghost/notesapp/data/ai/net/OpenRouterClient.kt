@@ -49,8 +49,8 @@ class OpenRouterClient(
     data class Config(
         val baseUrl: String = "https://openrouter.ai/api/v1",
         /** PLAN.md §5 — HTTP-Referer / X-Title identify the app to OpenRouter. */
-        val referer: String = "https://github.com/fadghost/notesapp",
-        val title: String = "Notesapp",
+        val referer: String = "https://github.com/TheFadGhost/Notesapp-Codex",
+        val title: String = "Notesapp Codex",
         val maxRetries: Int = 3,
         val baseBackoffMs: Long = 500
     )

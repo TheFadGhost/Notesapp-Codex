@@ -55,15 +55,15 @@ object AiModule {
             }
         }
         install(ContentNegotiation) { json(json) }
-        // Debug-only wire logging so the exact OpenRouter request/response can be
-        // inspected in logcat. The Authorization header (bearer key) is redacted via
-        // sanitizeHeader, so the API key is NEVER written to the log.
+        // Debug logging is deliberately headers-only. Request/response bodies can contain
+        // private notes, diary text, transcripts, or image data and must never reach logcat.
+        // The Authorization header is separately redacted as defence in depth.
         if (BuildConfig.DEBUG) {
             install(Logging) {
                 logger = object : Logger {
                     override fun log(message: String) { Log.d("OpenRouterHTTP", message) }
                 }
-                level = LogLevel.ALL
+                level = LogLevel.HEADERS
                 sanitizeHeader { header -> header == HttpHeaders.Authorization }
             }
         }

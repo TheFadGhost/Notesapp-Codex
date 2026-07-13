@@ -3,6 +3,7 @@ package com.fadghost.notesapp
 import com.fadghost.notesapp.ui.calendar.CalendarKind
 import com.fadghost.notesapp.ui.calendar.ItemDetailValidation
 import com.fadghost.notesapp.ui.calendar.ItemDetailValidation.Result
+import com.fadghost.notesapp.data.db.entity.Recurrence
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -47,6 +48,62 @@ class ItemDetailValidationTest {
         assertEquals(
             Result.OK,
             ItemDetailValidation.canSave(CalendarKind.EVENT, "Standup", now - 60_000L, now)
+        )
+    }
+
+    @Test fun nonRepeatingEvent_withPastAlert_isBlocked() {
+        assertEquals(
+            Result.PAST_NOTIFICATION,
+            ItemDetailValidation.canSave(
+                CalendarKind.EVENT,
+                "Standup",
+                now + 10 * 60_000L,
+                now,
+                Recurrence.NONE,
+                notificationLeadMinutes = 30
+            )
+        )
+    }
+
+    @Test fun nonRepeatingEvent_withAlertExactlyNow_isBlocked() {
+        assertEquals(
+            Result.PAST_NOTIFICATION,
+            ItemDetailValidation.canSave(
+                CalendarKind.EVENT,
+                "Standup",
+                now + 10 * 60_000L,
+                now,
+                Recurrence.NONE,
+                notificationLeadMinutes = 10
+            )
+        )
+    }
+
+    @Test fun eventWithAlertsOff_canBeLoggedInPast() {
+        assertEquals(
+            Result.OK,
+            ItemDetailValidation.canSave(
+                CalendarKind.EVENT,
+                "Standup",
+                now - 60_000L,
+                now,
+                Recurrence.NONE,
+                notificationLeadMinutes = null
+            )
+        )
+    }
+
+    @Test fun repeatingEvent_allowsPastBaseAlertBecauseNextOccurrenceIsScheduled() {
+        assertEquals(
+            Result.OK,
+            ItemDetailValidation.canSave(
+                CalendarKind.EVENT,
+                "Standup",
+                now - 60_000L,
+                now,
+                Recurrence.DAILY,
+                notificationLeadMinutes = 30
+            )
         )
     }
 

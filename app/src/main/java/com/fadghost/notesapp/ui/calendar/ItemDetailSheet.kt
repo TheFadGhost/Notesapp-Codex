@@ -59,12 +59,28 @@ import java.time.ZoneId
  * legitimately be logged in the past, so [Result.PAST_TIME] applies to reminders only.
  */
 object ItemDetailValidation {
-    enum class Result { OK, BLANK_TITLE, PAST_TIME }
+    enum class Result { OK, BLANK_TITLE, PAST_TIME, PAST_NOTIFICATION }
 
-    fun canSave(kind: CalendarKind, title: String, whenMillis: Long, nowMillis: Long): Result = when {
+    fun canSave(
+        kind: CalendarKind,
+        title: String,
+        whenMillis: Long,
+        nowMillis: Long,
+        recurrence: Recurrence = Recurrence.NONE,
+        notificationLeadMinutes: Int? = null
+    ): Result = when {
         title.isBlank() -> Result.BLANK_TITLE
         kind == CalendarKind.REMINDER && whenMillis < nowMillis -> Result.PAST_TIME
+        kind == CalendarKind.EVENT &&
+            recurrence == Recurrence.NONE &&
+            notificationLeadMinutes != null &&
+            notificationTime(whenMillis, notificationLeadMinutes) <= nowMillis -> Result.PAST_NOTIFICATION
         else -> Result.OK
+    }
+
+    private fun notificationTime(whenMillis: Long, leadMinutes: Int): Long {
+        val leadMillis = leadMinutes.coerceAtLeast(0).toLong() * 60_000L
+        return if (whenMillis < Long.MIN_VALUE + leadMillis) Long.MIN_VALUE else whenMillis - leadMillis
     }
 }
 
@@ -125,6 +141,7 @@ private fun SheetBody(
     var end by remember(seed) { mutableStateOf(toLdt(seed.end, zone)) }
     var notes by remember(seed) { mutableStateOf(seed.notes) }
     var recurrence by remember(seed) { mutableStateOf(seed.recurrence) }
+    var notificationLeadMinutes by remember(seed) { mutableStateOf(seed.notificationLeadMinutes) }
 
     Column(
         Modifier
@@ -197,6 +214,22 @@ private fun SheetBody(
 
         if (kind == CalendarKind.EVENT) {
             Spacer(Modifier.size(16.dp))
+            BasicText("Alert", style = AuraType.label.copy(color = tokens.colors.textSecondary))
+            Spacer(Modifier.size(6.dp))
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                EVENT_ALERT_OPTIONS.forEach { (minutes, label) ->
+                    LeadChip(
+                        label = label,
+                        selected = notificationLeadMinutes == minutes,
+                        onClick = { notificationLeadMinutes = minutes }
+                    )
+                }
+            }
+
+            Spacer(Modifier.size(16.dp))
             BasicText("Notes", style = AuraType.label.copy(color = tokens.colors.textSecondary))
             Spacer(Modifier.size(6.dp))
             Field(value = notes, placeholder = "Add notes", onChange = { notes = it }, singleLine = false)
@@ -205,13 +238,27 @@ private fun SheetBody(
         // Live save-gate (ux.md P1-4): blank title dims the button; a past reminder
         // time surfaces an inline notice and blocks the save entirely.
         val startMs = toMillis(start, zone)
-        val validation = ItemDetailValidation.canSave(kind, title, startMs, System.currentTimeMillis())
+        val validation = ItemDetailValidation.canSave(
+            kind = kind,
+            title = title,
+            whenMillis = startMs,
+            nowMillis = System.currentTimeMillis(),
+            recurrence = recurrence,
+            notificationLeadMinutes = notificationLeadMinutes
+        )
         val canSave = validation == ItemDetailValidation.Result.OK
 
         if (validation == ItemDetailValidation.Result.PAST_TIME) {
             Spacer(Modifier.size(14.dp))
             BasicText(
                 "That time has already passed — pick a future time for this reminder.",
+                style = AuraType.label.copy(color = tokens.colors.danger)
+            )
+        }
+        if (validation == ItemDetailValidation.Result.PAST_NOTIFICATION) {
+            Spacer(Modifier.size(14.dp))
+            BasicText(
+                "That alert time has already passed — choose a later event time or a shorter alert.",
                 style = AuraType.label.copy(color = tokens.colors.danger)
             )
         }
@@ -235,7 +282,8 @@ private fun SheetBody(
                         start = startMs,
                         end = endMs,
                         notes = notes,
-                        recurrence = recurrence
+                        recurrence = recurrence,
+                        notificationLeadMinutes = if (kind == CalendarKind.EVENT) notificationLeadMinutes else null
                     )
                 )
                 onDismiss()
@@ -291,6 +339,35 @@ private fun KindTab(label: String, selected: Boolean, modifier: Modifier, onClic
         contentAlignment = Alignment.Center
     ) {
         BasicText(label, style = AuraType.label.copy(color = fg))
+    }
+}
+
+private val EVENT_ALERT_OPTIONS: List<Pair<Int?, String>> = listOf(
+    null to "Off",
+    0 to "At time",
+    10 to "10 min",
+    30 to "30 min",
+    60 to "1 hour",
+    1_440 to "1 day"
+)
+
+@Composable
+private fun LeadChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val tokens = Aura.tokens
+    val background = if (selected) tokens.colors.accent else tokens.colors.background
+    val foreground = if (selected) tokens.colors.background else tokens.colors.textSecondary
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
+            .background(background)
+            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(label, style = AuraType.label.copy(color = foreground))
     }
 }
 

@@ -71,7 +71,10 @@ import java.util.Locale
  * the biometric lock when enabled.
  */
 @Composable
-fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
+fun DiaryScreen(
+    viewModel: DiaryViewModel = hiltViewModel(),
+    voiceViewModel: DiaryVoiceViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val locked by viewModel.locked.collectAsStateWithLifecycle()
@@ -91,13 +94,15 @@ fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
         onLoadMore = viewModel::loadMore,
         onSaveTodayDebounced = { body, mood -> viewModel.saveEntry(state.today, body, mood) },
         onSaveTodayNow = { body, mood -> viewModel.saveEntryNow(state.today, body, mood) },
-        onOpenDay = { openDay = it }
+        onOpenDay = { openDay = it },
+        voiceViewModel = voiceViewModel
     )
 
     openDay?.let { day ->
         DiaryDayEditor(
             date = day,
             viewModel = viewModel,
+            voiceViewModel = voiceViewModel,
             onClose = { openDay = null }
         )
     }
@@ -110,7 +115,8 @@ private fun DiaryContent(
     onLoadMore: () -> Unit,
     onSaveTodayDebounced: (String, Int?) -> Unit,
     onSaveTodayNow: (String, Int?) -> Unit,
-    onOpenDay: (LocalDate) -> Unit
+    onOpenDay: (LocalDate) -> Unit,
+    voiceViewModel: DiaryVoiceViewModel
 ) {
     val tokens = Aura.tokens
     // Systemic inset fix (ux.md): reserve the shared floating-nav-pill clearance so the
@@ -153,28 +159,30 @@ private fun DiaryContent(
     }
 
     val visibleTimeline = state.timeline.take(visibleCount)
+    var voiceVisible by remember(state.today) { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                BasicText(
-                    "YOUR JOURNAL",
-                    style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
-                )
-                Spacer(Modifier.height(2.dp))
-                BasicText(
-                    "Diary",
-                    style = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
-                    maxLines = 1,
-                    softWrap = false
-                )
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    BasicText(
+                        "YOUR JOURNAL",
+                        style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    BasicText(
+                        "Diary",
+                        style = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
-        }
 
-        LazyColumn(
+            LazyColumn(
             state = listState,
             // imePadding: shrink the list viewport above the keyboard so the focused
             // Today field auto-scrolls into view instead of hiding behind the IME
@@ -219,7 +227,8 @@ private fun DiaryContent(
                         todayBody = next
                         onSaveTodayDebounced(next.text, todayMood?.score)
                     },
-                    bodyFocus = todayFocus
+                    bodyFocus = todayFocus,
+                    onVoice = { voiceVisible = true }
                 )
             }
 
@@ -248,7 +257,19 @@ private fun DiaryContent(
             } else if (!state.hasAnyEntry) {
                 item(key = "firstrun") { DiaryFirstRun() }
             }
+            }
         }
+        DiaryVoiceCaptureSheet(
+            visible = voiceVisible,
+            date = state.today,
+            viewModel = voiceViewModel,
+            onInsert = { transcript ->
+                val next = insertTranscriptAtSelection(todayBody, transcript)
+                todayBody = next
+                onSaveTodayNow(next.text, todayMood?.score)
+            },
+            onDismiss = { voiceVisible = false }
+        )
     }
 }
 
@@ -263,7 +284,8 @@ private fun TodayCard(
     onMoodChange: (Mood?) -> Unit,
     prompts: List<PromptTemplate>,
     onPrompt: (String) -> Unit,
-    bodyFocus: FocusRequester? = null
+    bodyFocus: FocusRequester? = null,
+    onVoice: () -> Unit
 ) {
     val tokens = Aura.tokens
     Column(
@@ -281,6 +303,7 @@ private fun TodayCard(
                 Spacer(Modifier.height(2.dp))
                 BasicText(date.format(TODAY_FMT), style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
             }
+            DiaryVoiceEntryButton(onClick = onVoice)
         }
         Spacer(Modifier.height(14.dp))
         MoodPicker(selected = mood, onSelect = onMoodChange)
@@ -519,12 +542,14 @@ private fun DiaryFirstRun() {
 private fun DiaryDayEditor(
     date: LocalDate,
     viewModel: DiaryViewModel,
+    voiceViewModel: DiaryVoiceViewModel,
     onClose: () -> Unit
 ) {
     val tokens = Aura.tokens
     var body by remember(date) { mutableStateOf(TextFieldValue("")) }
     var mood by remember(date) { mutableStateOf<Mood?>(null) }
     var loaded by remember(date) { mutableStateOf(false) }
+    var voiceVisible by remember(date) { mutableStateOf(false) }
 
     LaunchedEffect(date) {
         val entry = viewModel.entryFor(date)
@@ -558,6 +583,7 @@ private fun DiaryDayEditor(
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 BackPill(onClick = { persist(); onClose() })
                 Spacer(Modifier.weight(1f))
+                DiaryVoiceEntryButton(onClick = { voiceVisible = true })
             }
             Spacer(Modifier.height(8.dp))
             BasicText(date.format(TODAY_FMT), style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
@@ -575,6 +601,17 @@ private fun DiaryDayEditor(
                 minHeight = 240.dp
             )
         }
+        DiaryVoiceCaptureSheet(
+            visible = voiceVisible,
+            date = date,
+            viewModel = voiceViewModel,
+            onInsert = { transcript ->
+                val next = insertTranscriptAtSelection(body, transcript)
+                body = next
+                viewModel.saveEntryNow(date, next.text, mood?.score)
+            },
+            onDismiss = { voiceVisible = false }
+        )
     }
 }
 

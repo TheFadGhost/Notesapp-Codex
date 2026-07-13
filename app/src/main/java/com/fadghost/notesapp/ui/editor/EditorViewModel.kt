@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 data class EditorState(
@@ -58,6 +60,8 @@ class EditorViewModel @Inject constructor(
     private var curBody = ""
     private var createdAt = 0L
     private var autosaveJob: Job? = null
+    private val tagWriteMutex = Mutex()
+    private var pendingTagIds: MutableSet<Long>? = null
 
     private val _state = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = _state.asStateFlow()
@@ -80,6 +84,7 @@ class EditorViewModel @Inject constructor(
      */
     fun open(id: Long, draft: DraftSnapshot? = null) {
         if (_state.value.loaded && _state.value.noteId == id) return
+        pendingTagIds = null
         viewModelScope.launch {
             val note = if (id > 0) repo.getNote(id) else null
             val restoredId = savedState.get<Long>(KEY_ID)
@@ -146,9 +151,9 @@ class EditorViewModel @Inject constructor(
     }
 
     /** Persist to Room. Skips creating an entirely empty new note. */
-    private suspend fun persist(): Long {
+    private suspend fun persist(force: Boolean = false): Long {
         val id = _state.value.noteId
-        if (id == 0L && curTitle.isBlank() && curBody.isBlank()) return 0L
+        if (!force && id == 0L && curTitle.isBlank() && curBody.isBlank()) return 0L
         val now = System.currentTimeMillis()
         val newId = repo.saveNote(
             Note(
@@ -184,7 +189,7 @@ class EditorViewModel @Inject constructor(
     /** Ensure the note exists (needed before assigning tags to a brand-new note). */
     private suspend fun ensurePersisted(): Long {
         val id = _state.value.noteId
-        return if (id > 0) id else persist()
+        return if (id > 0) id else persist(force = true)
     }
 
     /**
@@ -220,33 +225,48 @@ class EditorViewModel @Inject constructor(
 
     fun toggleTag(tagId: Long) {
         viewModelScope.launch {
-            val id = ensurePersisted()
-            if (id <= 0) return@launch
-            val current = noteTags.value.map { it.id }.toMutableSet()
-            if (!current.add(tagId)) current.remove(tagId)
-            repo.setTagsForNote(id, current)
+            tagWriteMutex.withLock {
+                val id = ensurePersisted()
+                if (id <= 0) return@withLock
+                val current = pendingTagIds
+                    ?: noteTags.value.mapTo(mutableSetOf()) { it.id }
+                if (!current.add(tagId)) current.remove(tagId)
+                pendingTagIds = current
+                repo.setTagsForNote(id, current)
+            }
         }
     }
 
     fun createAndAssignTag(name: String, color: Int) {
-        if (name.isBlank()) return
+        val normalized = normalizeOrganizeName(name)
+        if (normalized.isBlank()) return
         viewModelScope.launch {
-            val id = ensurePersisted()
-            if (id <= 0) return@launch
-            val tagId = repo.createTag(name, color)
-            val current = noteTags.value.map { it.id }.toMutableSet().apply { add(tagId) }
-            repo.setTagsForNote(id, current)
+            tagWriteMutex.withLock {
+                val id = ensurePersisted()
+                if (id <= 0) return@withLock
+                val tagId = repo.createTag(normalized, color)
+                val current = pendingTagIds
+                    ?: noteTags.value.mapTo(mutableSetOf()) { it.id }
+                current.add(tagId)
+                pendingTagIds = current
+                repo.setTagsForNote(id, current)
+            }
         }
     }
 
     fun createFolderAndMove(name: String) {
+        val normalized = normalizeOrganizeName(name)
+        if (normalized.isBlank()) return
         viewModelScope.launch {
-            val folderId = repo.createFolder(name)
-            moveToFolder(folderId)
+            val folderId = repo.createFolder(normalized)
+            _state.value = _state.value.copy(folderId = folderId)
+            val id = ensurePersisted()
+            if (id > 0) repo.moveToFolder(id, folderId)
         }
     }
 
     fun moveToFolder(folderId: Long?) {
+        if (_state.value.folderId == folderId) return
         _state.value = _state.value.copy(folderId = folderId)
         viewModelScope.launch {
             val id = ensurePersisted()

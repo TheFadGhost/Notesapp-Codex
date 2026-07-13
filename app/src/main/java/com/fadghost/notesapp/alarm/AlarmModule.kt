@@ -18,4 +18,8 @@ abstract class AlarmModule {
     @Binds
     @Singleton
     abstract fun bindReminderAlarm(impl: AlarmScheduler): ReminderAlarm
+
+    @Binds
+    @Singleton
+    abstract fun bindEventAlarm(impl: EventAlarmScheduler): EventAlarm
 }

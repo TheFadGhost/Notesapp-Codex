@@ -28,7 +28,7 @@ class ActionInserter(
     private val alarm: ReminderAlarm
 ) {
     /** Insert an accepted proposal. Returns a token identifying the inserted row for undo. */
-    suspend fun insert(action: ProposedAction): InsertedRow? {
+    suspend fun insert(action: ProposedAction, sourceNoteId: Long? = null): InsertedRow? {
         val tz = TimeZone.getDefault().id
         return when (action.type) {
             ActionType.EVENT -> {
@@ -46,11 +46,24 @@ class ActionInserter(
             }
             ActionType.REMINDER -> {
                 val trigger = action.datetimeMillis ?: System.currentTimeMillis()
-                val id = reminderDao.upsert(Reminder(title = action.title, triggerAt = trigger, timezone = tz))
+                val id = reminderDao.upsert(
+                    Reminder(
+                        title = action.title,
+                        triggerAt = trigger,
+                        timezone = tz,
+                        sourceNoteId = sourceNoteId?.takeIf { it > 0 }
+                    )
+                )
                 // Arm the exact alarm (H1). Re-read the stored row so the alarm carries
                 // the real row id; fall back to a synthetic copy if the read misses.
                 val stored = reminderDao.getById(id)
-                    ?: Reminder(id = id, title = action.title, triggerAt = trigger, timezone = tz)
+                    ?: Reminder(
+                        id = id,
+                        title = action.title,
+                        triggerAt = trigger,
+                        timezone = tz,
+                        sourceNoteId = sourceNoteId?.takeIf { it > 0 }
+                    )
                 alarm.scheduleReminder(stored)
                 InsertedRow.ReminderRow(id)
             }

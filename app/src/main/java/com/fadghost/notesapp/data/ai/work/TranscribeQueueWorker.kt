@@ -20,6 +20,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Offline voice-transcription queue (PLAN.md §5 — "offline → queue via the existing
@@ -52,7 +53,7 @@ class TranscribeQueueWorker(
         val paths = pathsCsv.split("\n").filter { it.isNotBlank() }
         val durations = durationsCsv.split("\n").mapNotNull { it.toLongOrNull() }
         val files = paths.map { File(it) }
-        if (files.none { it.exists() }) return Result.failure()
+        if (files.any { !it.isFile || it.length() <= 0L }) return Result.failure()
 
         val ep = EntryPointAccessors.fromApplication(applicationContext, WorkerEntryPoint::class.java)
         ep.notesRepository().getNote(noteId) ?: return Result.failure()
@@ -77,7 +78,17 @@ class TranscribeQueueWorker(
         const val KEY_SEGMENT_DURATIONS = "segment_durations"
         private const val PREFIX = "voice_transcribe_"
 
-        fun uniqueName(noteId: Long) = "$PREFIX$noteId"
+        /**
+         * Work is scoped to the actual segment set, not merely the note. A user can make
+         * several offline recordings in one note; the old note-only name plus REPLACE
+         * silently discarded every earlier pending transcription.
+         */
+        fun uniqueName(noteId: Long, segments: List<RecordedSegment>): String {
+            val bytes = segments.joinToString("\n") { it.path }.toByteArray(Charsets.UTF_8)
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            return "$PREFIX${noteId}_$digest"
+        }
 
         /** Enqueue transcription of [segments] into [noteId] when the network returns. */
         fun enqueue(context: Context, noteId: Long, segments: List<RecordedSegment>) {
@@ -92,8 +103,8 @@ class TranscribeQueueWorker(
                 )
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                uniqueName(noteId),
-                ExistingWorkPolicy.REPLACE,
+                uniqueName(noteId, segments),
+                ExistingWorkPolicy.KEEP,
                 request
             )
         }

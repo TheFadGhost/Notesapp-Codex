@@ -10,15 +10,17 @@
 
     <!-- Voice ramble recording (PLAN.md §5 — MediaRecorder → AAC/M4A). Runtime-requested. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Calendar / reminders (PLAN.md §8). USE_EXACT_ALARM is auto-granted for this
          sideloaded app (Android 13+); SCHEDULE_EXACT_ALARM covers 12/12L. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Battery-optimization exemption deep-link banner (PLAN.md §8). -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".NotesApp"
@@ -92,20 +94,33 @@
             </intent-filter>
         </service>
 
+        <!-- Owns MediaRecorder independently of Activity/ViewModel lifetime so a ramble keeps
+             recording when the screen locks or another app comes forward. Starts only from a
+             visible, user-initiated microphone action. -->
+        <service
+            android:name=".service.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            android:stopWithTask="false" />
+
         <!-- Reminder pipeline (PLAN.md §8). Not exported: only our own alarms and
              notification actions trigger these. -->
         <receiver
             android:name=".alarm.AlarmReceiver"
             android:exported="false" />
         <receiver
+            android:name=".alarm.EventAlarmReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".alarm.ReminderActionReceiver"
             android:exported="false" />
         <receiver
             android:name=".alarm.BootReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

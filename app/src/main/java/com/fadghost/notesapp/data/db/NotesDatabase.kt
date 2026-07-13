@@ -45,7 +45,7 @@ import com.fadghost.notesapp.data.db.entity.Tag
         MemoryEntry::class,
         MemoryLink::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

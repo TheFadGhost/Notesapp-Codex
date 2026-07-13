@@ -60,4 +60,25 @@ class VoiceCommit @Inject constructor(
         }
         return Committed(noteId, start, end)
     }
+
+    /**
+     * Attach captured audio to a note whose body was produced elsewhere (the ramble rewrite
+     * pipeline). Segment-set matching makes a WorkManager retry safe if the row was inserted
+     * before the worker process died.
+     */
+    suspend fun attachOnly(
+        noteId: Long,
+        segments: List<RecordedSegment>,
+        transcriptStart: Int = 0,
+        transcriptEnd: Int = 0,
+        now: Long = System.currentTimeMillis()
+    ): Committed? {
+        notes.getNote(noteId) ?: return null
+        if (segments.isEmpty()) return Committed(noteId, transcriptStart, transcriptEnd)
+        VoiceCommitLogic.existingCommit(attachments.forNote(noteId), segments.map { it.path })?.let {
+            return Committed(noteId, it.transcriptStart, it.transcriptEnd)
+        }
+        attachments.record(noteId, segments, transcriptStart, transcriptEnd, now)
+        return Committed(noteId, transcriptStart, transcriptEnd)
+    }
 }

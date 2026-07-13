@@ -1,23 +1,30 @@
 package com.fadghost.notesapp.ui.calendar
 
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
 
-/**
- * Tiny process-wide relay for the "open the app at this reminder" deep link fired
- * by a notification tap (PLAN.md §8). MainActivity pushes the reminder id here from
- * the launch/new intent; AppShell switches to the Calendar tab and CalendarScreen
- * opens the item's edit sheet, then clears it. Kept as a plain object (not a VM) so
- * both the activity and composables can reach it without extra Hilt wiring.
- */
-object CalendarDeepLink {
-    /** Reminder id to open, or null when nothing pending. */
-    val pendingReminderId = MutableStateFlow<Long?>(null)
+sealed interface CalendarDeepLinkTarget {
+    val id: Long
 
-    fun request(reminderId: Long) {
-        if (reminderId > 0) pendingReminderId.value = reminderId
+    data class Reminder(override val id: Long) : CalendarDeepLinkTarget
+    data class Event(override val id: Long) : CalendarDeepLinkTarget
+}
+
+data class CalendarDeepLinkRequest(val token: Long, val target: CalendarDeepLinkTarget)
+
+/** Tokenized relay so repeated taps and missing/deleted rows are consumed reliably. */
+object CalendarDeepLink {
+    private val tokens = AtomicLong(0L)
+    val pendingRequest = MutableStateFlow<CalendarDeepLinkRequest?>(null)
+
+    fun requestReminder(id: Long) = request(CalendarDeepLinkTarget.Reminder(id))
+    fun requestEvent(id: Long) = request(CalendarDeepLinkTarget.Event(id))
+
+    private fun request(target: CalendarDeepLinkTarget) {
+        if (target.id > 0L) pendingRequest.value = CalendarDeepLinkRequest(tokens.incrementAndGet(), target)
     }
 
-    fun clear() {
-        pendingReminderId.value = null
+    fun consume(token: Long) {
+        if (pendingRequest.value?.token == token) pendingRequest.value = null
     }
 }

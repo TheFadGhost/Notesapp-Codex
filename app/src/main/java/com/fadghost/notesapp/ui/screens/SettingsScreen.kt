@@ -160,12 +160,24 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         pending?.let { preview ->
             DividerLine()
             BasicText(
-                text = "Ready to import ${preview.manifest.noteCount} notes" +
-                    if (preview.isIntact) "" else " (checksum warnings)",
-                style = AuraType.label.copy(color = tokens.colors.textSecondary),
+                text = if (preview.isIntact) {
+                    "Ready to import ${preview.manifest.noteCount} notes"
+                } else {
+                    "Import blocked: backup verification failed"
+                },
+                style = AuraType.label.copy(
+                    color = if (preview.isIntact) tokens.colors.textSecondary else tokens.colors.danger
+                ),
                 modifier = Modifier.padding(vertical = 8.dp)
             )
-            if (!confirmReplace) {
+            if (!preview.isIntact) {
+                ThemeChip(
+                    "Cancel",
+                    selected = false,
+                    onClick = viewModel::cancelImport,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else if (!confirmReplace) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // Merge stays one-tap safe; Replace only expands the danger confirm.
                     ThemeChip("Merge", selected = false, onClick = { if (!busy) viewModel.confirmImport(ImportMode.MERGE) }, modifier = Modifier.weight(1f))

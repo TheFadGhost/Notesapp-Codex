@@ -1,5 +1,7 @@
 package com.fadghost.notesapp.alarm
 
+import com.fadghost.notesapp.data.db.dao.EventDao
+import com.fadghost.notesapp.data.db.dao.NoteDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -14,6 +16,9 @@ import dagger.hilt.components.SingletonComponent
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface AlarmEntryPoint {
+    fun noteDao(): NoteDao
+    fun eventDao(): EventDao
     fun reminderDao(): ReminderDao
     fun alarmScheduler(): AlarmScheduler
+    fun eventAlarm(): EventAlarm
 }

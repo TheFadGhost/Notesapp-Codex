@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
  * radius on every rectangle, and a stroke clamped to a fixed dp per size tier
  * (regular = 1.75 dp) so a 24-dp and a 96-dp glyph look drawn by one pen.
  */
-enum class AuraIcon { NOTES, DIARY, CALENDAR, SETTINGS }
+enum class AuraIcon { NOTES, DIARY, CALENDAR, ASK, SETTINGS }
 
 /** Regular icon-tier stroke: fixed 1.75 dp regardless of the box size. */
 private fun DrawScope.regularStroke() =
@@ -36,6 +36,7 @@ fun TabGlyph(icon: AuraIcon, color: Color, modifier: Modifier = Modifier) {
             AuraIcon.NOTES -> drawNotes(color, s, stroke)
             AuraIcon.DIARY -> drawDiary(color, s, stroke)
             AuraIcon.CALENDAR -> drawCalendar(color, s, stroke)
+            AuraIcon.ASK -> drawAsk(color, s, stroke)
             AuraIcon.SETTINGS -> drawSettings(color, s, stroke)
         }
     }
@@ -76,6 +77,29 @@ private fun DrawScope.drawCalendar(color: Color, s: Float, stroke: Stroke) {
     drawLine(color, Offset(left + s * 0.04f, top + s * 0.16f), Offset(right - s * 0.04f, top + s * 0.16f), stroke.width, StrokeCap.Round)
     drawLine(color, Offset(left + s * 0.16f, top - s * 0.02f), Offset(left + s * 0.16f, top + s * 0.10f), stroke.width, StrokeCap.Round)
     drawLine(color, Offset(right - s * 0.16f, top - s * 0.02f), Offset(right - s * 0.16f, top + s * 0.10f), stroke.width, StrokeCap.Round)
+}
+
+/** Three hand-drawn sparkles: Folio's Ask mark without a Material icon dependency. */
+private fun DrawScope.drawAsk(color: Color, s: Float, stroke: Stroke) {
+    fun sparkle(cx: Float, cy: Float, radius: Float) {
+        drawLine(
+            color,
+            Offset(s * cx, s * (cy - radius)),
+            Offset(s * cx, s * (cy + radius)),
+            stroke.width,
+            StrokeCap.Round
+        )
+        drawLine(
+            color,
+            Offset(s * (cx - radius), s * cy),
+            Offset(s * (cx + radius), s * cy),
+            stroke.width,
+            StrokeCap.Round
+        )
+    }
+    sparkle(cx = 0.44f, cy = 0.50f, radius = 0.20f)
+    sparkle(cx = 0.72f, cy = 0.29f, radius = 0.075f)
+    sparkle(cx = 0.72f, cy = 0.70f, radius = 0.06f)
 }
 
 private fun DrawScope.drawSettings(color: Color, s: Float, stroke: Stroke) {

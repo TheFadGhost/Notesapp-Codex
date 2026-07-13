@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
@@ -47,6 +48,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -132,10 +135,9 @@ fun EditorScreen(
     var titleValue by remember { mutableStateOf(TextFieldValue("")) }
     var bodyValue by remember { mutableStateOf(TextFieldValue("")) }
     var initializedFor by remember { mutableStateOf(-1L) }
-    // Two independent, focused pickers (bug 3): the Folder chip and the Tags chip each open
-    // only their own popover — never a combined sheet.
-    var showFolderPicker by remember { mutableStateOf(false) }
-    var showTagPicker by remember { mutableStateOf(false) }
+    // One measured trigger opens the merged, tags-forward assignment panel.
+    var showOrganize by remember { mutableStateOf(false) }
+    var organizeAnchor by remember { mutableStateOf(Rect.Zero) }
     var showNoKey by remember { mutableStateOf(false) }
     // The AI sparkle menu (§1.9): one button opens the 4-row panel anchored to its bounds.
     var showAiMenu by remember { mutableStateOf(false) }
@@ -325,10 +327,8 @@ fun EditorScreen(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 96.dp)
         ) {
-            // Top bar. Back and the destructive trash stay pinned at the ends; the middle
-            // action cluster (AI icons + Folder/Tags chips) becomes horizontally scrollable
-            // on narrow screens so nothing is ever clipped (bug 4). The Folder/Tags chips
-            // are icon-only to buy width; their state is shown by an accent tint.
+            // Top bar. Back and trash stay pinned; the middle action cluster scrolls on
+            // narrow screens, and one 48dp Organize trigger owns folder + tag assignment.
             BoxWithConstraints(
                 Modifier.fillMaxWidth().padding(vertical = 8.dp)
             ) {
@@ -356,9 +356,12 @@ fun EditorScreen(
                         // Push the chips to the right of the cluster when there's room; use a
                         // fixed gap in the scrollable case (weight is invalid inside scroll).
                         if (scrollable) Spacer(Modifier.width(12.dp)) else Spacer(Modifier.weight(1f))
-                        ChipAction(Glyph.FOLDER, active = state.folderId != null) { showFolderPicker = true }
-                        Spacer(Modifier.width(8.dp))
-                        ChipAction(Glyph.TAG, active = noteTags.isNotEmpty()) { showTagPicker = true }
+                        Box(Modifier.onGloballyPositioned { organizeAnchor = it.boundsInRoot() }) {
+                            OrganizeAction(active = state.folderId != null || noteTags.isNotEmpty()) {
+                                focus.clearFocus()
+                                showOrganize = true
+                            }
+                        }
                     }
                     // Keep the destructive trash well clear of the Tags chip (P0-2): a hairline
                     // divider so it can't be fat-fingered for "Tags".
@@ -515,23 +518,30 @@ fun EditorScreen(
                 .padding(bottom = 12.dp)
         )
 
-        if (showFolderPicker) {
-            FolderPicker(
+        if (showOrganize) {
+            OrganizePanel(
+                anchorBounds = organizeAnchor,
                 folders = folders,
                 currentFolderId = state.folderId,
-                onSelectFolder = viewModel::moveToFolder,
-                onCreateFolder = viewModel::createFolderAndMove,
-                onDismiss = { showFolderPicker = false }
-            )
-        }
-
-        if (showTagPicker) {
-            TagPicker(
                 allTags = allTags,
                 assignedTagIds = noteTags.map { it.id }.toSet(),
-                onToggleTag = viewModel::toggleTag,
-                onCreateTag = viewModel::createAndAssignTag,
-                onDismiss = { showTagPicker = false }
+                onSelectFolder = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.moveToFolder(it)
+                },
+                onCreateFolder = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.createFolderAndMove(it)
+                },
+                onToggleTag = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.toggleTag(it)
+                },
+                onCreateTag = { name, color ->
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.createAndAssignTag(name, color)
+                },
+                onDismiss = { showOrganize = false }
             )
         }
 
@@ -898,20 +908,17 @@ private fun IconAction(
     }
 }
 
-/**
- * Icon-only Folder/Tags chip (bug 4). A rounded 44dp surface button; when [active]
- * (a folder is set / tags are assigned) it tints to the accent and shows an accent-lined
- * rim so the state is still legible without a text label.
- */
+/** One 48dp trigger for both notebook and tag assignment. */
 @Composable
-private fun ChipAction(glyph: Glyph, active: Boolean, onClick: () -> Unit) {
+private fun OrganizeAction(active: Boolean, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     val tint = if (active) tokens.colors.accent else tokens.colors.textSecondary
     Box(
         Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .semantics { contentDescription = "Organize note" }
             .auraPress(interaction, tint = true)
             .background(if (active) tokens.colors.accent.copy(alpha = 0.14f) else tokens.colors.surface)
             .clickable(
@@ -921,7 +928,15 @@ private fun ChipAction(glyph: Glyph, active: Boolean, onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        AuraGlyph(glyph, tint, Modifier.size(18.dp))
+        AuraGlyph(Glyph.FOLDER, tint, Modifier.size(20.dp))
+        Box(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 9.dp, bottom = 9.dp)
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(tint)
+        )
     }
 }
 

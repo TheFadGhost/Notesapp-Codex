@@ -1,6 +1,7 @@
 package com.fadghost.notesapp
 
 import android.app.Application
+import com.fadghost.notesapp.alarm.EventAlarm
 import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.data.memory.MemoryRepository
 import com.fadghost.notesapp.data.work.TrashPurgeWorker
@@ -16,6 +17,7 @@ import javax.inject.Inject
 class NotesApp : Application() {
 
     @Inject lateinit var reminderAlarm: ReminderAlarm
+    @Inject lateinit var eventAlarm: EventAlarm
     @Inject lateinit var memoryRepository: MemoryRepository
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -32,6 +34,7 @@ class NotesApp : Application() {
         // alarms armed by paths that don't go through reboot (e.g. AI-extracted
         // reminders). Runs off the main thread — never block onCreate on a DB read.
         appScope.launch { runCatching { reminderAlarm.rescheduleAll() } }
+        appScope.launch { runCatching { eventAlarm.rescheduleAll() } }
         // Memory vault (M-B): files are the source of truth — rebuild the Room mirror in the
         // background if it drifted from the files (e.g. a kill mid-write, or a restore).
         appScope.launch { runCatching { memoryRepository.reconcile() } }

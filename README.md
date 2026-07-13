@@ -2,7 +2,7 @@
 
 Personal AI-powered notes, diary and calendar for Android — local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
 
-![version](https://img.shields.io/badge/version-v3.0.0-8a5a44?style=flat-square)
+![version](https://img.shields.io/badge/version-v3.1.0-8a5a44?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Android%2012%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![kotlin](https://img.shields.io/badge/Kotlin-2.1-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
@@ -22,23 +22,28 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 **AI (bring your own OpenRouter key)**
 - Clean-up: streams a de-filler'd, structured rewrite of any ramble into a before/after sheet
 - Extract actions: pulls events/reminders/todos out of note text as confirm/deny cards with edit + free-text revision
+- Ask Folio: a fifth tab that searches notes + memory, streams grounded answers, and links personal claims back to their sources
 - Offline queueing, per-call cost tracking, model picker (default `deepseek/deepseek-v4-flash`)
 
 **Voice**
-- Record voice rambles (auto-split 5-minute AAC segments)
-- Transcribe via OpenRouter STT (default `qwen/qwen3-asr-flash-2026-02-10`)
-- Transcript lands in the note with a circular audio chip and popover player
-- Optional auto clean-up on the transcript
+- Record long voice rambles in a foreground service, including with the app backgrounded (auto-split 5-minute AAC segments)
+- Transcribe via OpenRouter STT (default `openai/gpt-4o-mini-transcribe`)
+- Folio rewrites each ramble into a note, then shows confirm cards before adding reminders/events
+- Tap-toggle or hold-to-talk recording; durable processing/review survives process death
+- Existing-note transcripts still land with a circular audio chip and popover player
 
 **Calendar & reminders**
 - Custom springy month/week/agenda views
 - Exact alarms that survive reboots, with Done/Snooze notification actions
+- Event alerts with selectable lead times; duplicate reminder/event delivery is atomically suppressed
+- Extracted reminders link back to their source note
 - Natural-language quick-add ("gym tomorrow 7am") parsed locally
 - Battery-killer warnings for reliable delivery
 
 **Diary**
 - Day-per-entry with mood, streaks and a heat-map
 - "On this day", rotating prompts
+- Transcript-only microphone inserts at the current selection without creating a stray note or retaining audio
 - Optional biometric gate, daily nudge
 
 **Design & themes**
@@ -53,7 +58,7 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 
 **Privacy**
 - Everything stored on-device; the only network traffic is your own OpenRouter calls
-- Checksummed ZIP backup/restore (manual + scheduled)
+- Strictly validated, checksummed manual ZIP backup/restore; corrupt or unexpected payloads are blocked before restore
 - API key kept in Android Keystore, never written to backups or logs
 
 ## Screenshots
@@ -71,7 +76,7 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 1. Download the latest `app-release.apk` from [Releases](../../releases).
 2. Open it on your phone; allow "install unknown apps" for your browser/files app when prompted.
 3. Android may show a Play Protect warning — this is normal for sideloaded apps not distributed through the Play Store; choose "Install anyway".
-4. Open **Settings → AI** in the app and paste your own [OpenRouter API key](https://openrouter.ai/keys). The app doesn't work without one — there's no bundled key or backend.
+4. For optional AI and transcription features, open **Settings → AI** and paste your own [OpenRouter API key](https://openrouter.ai/keys). Notes, diary, calendar, search and local reminders work without a key; there is no bundled key or backend.
 
 ## Build from source
 

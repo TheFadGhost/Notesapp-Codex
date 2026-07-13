@@ -8,7 +8,8 @@ import kotlinx.serialization.Serializable
  * secret is NEVER represented here — these DTOs only carry note content.
  */
 
-const val BACKUP_FORMAT_VERSION = 1
+const val BACKUP_FORMAT_VERSION = 2
+const val MIN_SUPPORTED_BACKUP_FORMAT_VERSION = 1
 
 @Serializable
 data class BackupNote(
@@ -28,6 +29,42 @@ data class BackupFolder(val name: String)
 
 @Serializable
 data class BackupTag(val name: String, val color: Int)
+
+@Serializable
+data class BackupDiaryEntry(
+    val date: String,
+    val body: String,
+    val mood: Int? = null,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Serializable
+data class BackupEvent(
+    val id: Long,
+    val title: String,
+    val startAt: Long,
+    val endAt: Long,
+    val timezone: String,
+    val notes: String? = null,
+    val recurrence: String = "NONE",
+    val notificationLeadMinutes: Int? = null,
+    val lastNotifiedOccurrenceAt: Long? = null
+)
+
+@Serializable
+data class BackupReminder(
+    val id: Long,
+    val title: String,
+    val triggerAt: Long,
+    val timezone: String,
+    val done: Boolean = false,
+    val snoozedUntil: Long? = null,
+    val recurrence: String = "NONE",
+    /** Old backup note id; remapped to the restored note id on import. */
+    val sourceNoteId: Long? = null,
+    val lastNotifiedTriggerAt: Long? = null
+)
 
 /**
  * An attachment's metadata (M-A). The file bytes live in the ZIP at [zipPath]; on
@@ -56,7 +93,11 @@ data class BackupData(
     val notes: List<BackupNote> = emptyList(),
     val folders: List<BackupFolder> = emptyList(),
     val tags: List<BackupTag> = emptyList(),
-    val attachments: List<BackupAttachment> = emptyList()
+    val attachments: List<BackupAttachment> = emptyList(),
+    /** Added in format v2; absent v1 fields decode to empty lists. */
+    val diaryEntries: List<BackupDiaryEntry> = emptyList(),
+    val events: List<BackupEvent> = emptyList(),
+    val reminders: List<BackupReminder> = emptyList()
 )
 
 @Serializable
@@ -72,7 +113,11 @@ data class BackupManifest(
     val entries: List<ManifestEntry>,
     val attachmentCount: Int = 0,
     /** Number of memory-vault files (index.md + per-entry markdown) in the ZIP (M-B). */
-    val memoryFileCount: Int = 0
+    val memoryFileCount: Int = 0,
+    /** Format-v2 metadata counts; default zero keeps genuine v1 manifests readable. */
+    val diaryEntryCount: Int = 0,
+    val eventCount: Int = 0,
+    val reminderCount: Int = 0
 )
 
 /** Result of reading a backup ZIP without committing it — drives the import preview. */
@@ -89,5 +134,20 @@ data class BackupPreview(
     val isIntact: Boolean get() = checksumMismatches.isEmpty()
 }
 
+/** Pure restore guard shared by the UI and manager. */
+object BackupRestoreGuard {
+    fun requireIntact(preview: BackupPreview) {
+        require(preview.isIntact) {
+            "Backup failed checksum verification for ${preview.checksumMismatches.size} file(s)"
+        }
+    }
+}
+
 /** Import strategy chosen after preview (PLAN.md §12 — never blind overwrite). */
 enum class ImportMode { REPLACE, MERGE }
+
+/** Rows whose previously-armed alarms/notifications must be cancelled after REPLACE. */
+data class BackupImportResult(
+    val replacedReminderIds: List<Long> = emptyList(),
+    val replacedEventIds: List<Long> = emptyList()
+)

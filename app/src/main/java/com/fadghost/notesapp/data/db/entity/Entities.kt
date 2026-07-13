@@ -85,7 +85,10 @@ data class DiaryEntry(
     val updatedAt: Long
 )
 
-@Entity(tableName = "Event", indices = [Index("startAt")])
+@Entity(
+    tableName = "Event",
+    indices = [Index("startAt"), Index("notificationLeadMinutes")]
+)
 data class Event(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
@@ -94,10 +97,25 @@ data class Event(
     /** IANA timezone id (DST-safe scheduling, PLAN.md §8). */
     val timezone: String,
     val notes: String? = null,
-    val recurrence: Recurrence = Recurrence.NONE
+    val recurrence: Recurrence = Recurrence.NONE,
+    /** Null disables alerts; otherwise minutes before the occurrence (0 = at start). */
+    val notificationLeadMinutes: Int? = null,
+    /** Logical occurrence start most recently posted, used to make delivery idempotent. */
+    val lastNotifiedOccurrenceAt: Long? = null
 )
 
-@Entity(tableName = "Reminder", indices = [Index("triggerAt"), Index("done")])
+@Entity(
+    tableName = "Reminder",
+    foreignKeys = [
+        ForeignKey(
+            entity = Note::class,
+            parentColumns = ["id"],
+            childColumns = ["sourceNoteId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [Index("triggerAt"), Index("done"), Index("sourceNoteId")]
+)
 data class Reminder(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
@@ -106,5 +124,9 @@ data class Reminder(
     val done: Boolean = false,
     val snoozedUntil: Long? = null,
     /** Simple v1 repeat (PLAN.md §8: none/daily/weekly/monthly). Added in schema v4 (M3). */
-    val recurrence: Recurrence = Recurrence.NONE
+    val recurrence: Recurrence = Recurrence.NONE,
+    /** Note that produced this reminder (AI/ramble extraction); hard delete clears the link. */
+    val sourceNoteId: Long? = null,
+    /** Effective trigger/snooze slot most recently posted, preventing duplicate delivery. */
+    val lastNotifiedTriggerAt: Long? = null
 )

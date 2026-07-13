@@ -4,8 +4,10 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.entity.Reminder
+import com.fadghost.notesapp.notify.ReminderNotifier
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,9 +38,12 @@ class AlarmScheduler @Inject constructor(
      * lets recurrence advance from the original clock time (audit M1).
      */
     override fun scheduleReminder(reminder: Reminder) {
-        if (reminder.done) return
-        val pi = pendingIntent(reminder.id, create = true) ?: return
-        val at = reminder.snoozedUntil ?: reminder.triggerAt
+        val at = ReminderAlarmMath.nextAlarmAt(reminder)
+        if (at == null) {
+            cancelReminder(reminder.id)
+            return
+        }
+        val pi = pendingIntent(reminder.id, at, create = true) ?: return
         try {
             if (canExact()) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
@@ -52,7 +57,11 @@ class AlarmScheduler @Inject constructor(
     }
 
     override fun cancelReminder(reminderId: Long) {
-        pendingIntent(reminderId, create = false)?.let { alarmManager.cancel(it) }
+        pendingIntent(reminderId, scheduledAt = 0L, create = false)?.let {
+            alarmManager.cancel(it)
+            it.cancel()
+        }
+        ReminderNotifier.cancel(context, reminderId)
     }
 
     /** Rearm every not-done reminder — called after reboot / app update. */
@@ -62,13 +71,17 @@ class AlarmScheduler @Inject constructor(
 
     override fun canExact(): Boolean = alarmManager.canScheduleExactAlarms()
 
-    private fun pendingIntent(reminderId: Long, create: Boolean): PendingIntent? {
+    private fun pendingIntent(reminderId: Long, scheduledAt: Long, create: Boolean): PendingIntent? {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmReceiver.ACTION_FIRE
+            data = Uri.parse("${context.packageName}://alarm/reminder/$reminderId")
             putExtra(AlarmReceiver.EXTRA_REMINDER_ID, reminderId)
+            putExtra(AlarmReceiver.EXTRA_SCHEDULED_AT, scheduledAt)
         }
         val flags = (if (create) PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_NO_CREATE) or
             PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getBroadcast(context, reminderId.toInt(), intent, flags)
+        return PendingIntent.getBroadcast(context, stableRequestCode(reminderId), intent, flags)
     }
+
+    private fun stableRequestCode(id: Long): Int = (id xor (id ushr 32)).toInt()
 }

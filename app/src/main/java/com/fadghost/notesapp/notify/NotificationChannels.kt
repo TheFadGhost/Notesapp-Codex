@@ -11,12 +11,18 @@ import android.content.Context
  * channel — same id, same importance, no conflict.
  */
 object NotificationChannels {
+    const val EVENTS = "events"
     const val REMINDERS = "reminders"   // HIGH — reminders that must be noticed
     const val NUDGES = "nudges"         // DEFAULT — journaling nudge etc. (shared w/ diary)
     const val AI_RESULTS = "ai_results" // LOW — background AI finished
 
     fun ensure(context: Context) {
         val mgr = context.getSystemService(NotificationManager::class.java) ?: return
+        mgr.createNotificationChannel(
+            NotificationChannel(EVENTS, "Event alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Alerts before calendar events"
+            }
+        )
         mgr.createNotificationChannel(
             NotificationChannel(REMINDERS, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Time-based reminders you set"

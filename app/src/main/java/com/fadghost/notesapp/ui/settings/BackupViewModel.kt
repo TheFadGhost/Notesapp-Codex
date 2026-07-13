@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fadghost.notesapp.data.backup.BackupManager
 import com.fadghost.notesapp.data.backup.BackupPreview
+import com.fadghost.notesapp.data.backup.BackupRestoreGuard
 import com.fadghost.notesapp.data.backup.ImportMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,15 +55,15 @@ class BackupViewModel @Inject constructor(
 
     fun loadPreview(source: Uri) {
         lastOp = { loadPreview(source) }
-        run(BackupUiState.Importing, "Couldn't read that backup file.") {
+        _pendingPreview.value = null
+        run(BackupUiState.Importing, "Couldn't verify that backup file.") {
             val preview = backup.preview(source)
+            BackupRestoreGuard.requireIntact(preview)
             _pendingPreview.value = preview
-            _status.value = if (preview.isIntact) {
-                "Backup verified: ${preview.manifest.noteCount} notes, " +
-                    "${preview.manifest.folderCount} folders, ${preview.manifest.tagCount} tags."
-            } else {
-                "Warning: ${preview.checksumMismatches.size} file(s) failed checksum verification."
-            }
+            _status.value = "Backup verified: ${preview.manifest.noteCount} notes, " +
+                "${preview.manifest.folderCount} folders, ${preview.manifest.tagCount} tags, " +
+                "${preview.manifest.diaryEntryCount} diary entries, ${preview.manifest.eventCount} events, " +
+                "${preview.manifest.reminderCount} reminders."
         }
     }
 
@@ -70,10 +71,13 @@ class BackupViewModel @Inject constructor(
         val preview = _pendingPreview.value ?: return
         lastOp = { confirmImport(mode) }
         run(BackupUiState.Importing, "Couldn't import that backup.") {
+            BackupRestoreGuard.requireIntact(preview)
             backup.restore(preview, mode)
             _pendingPreview.value = null
             val verb = if (mode == ImportMode.REPLACE) "Replaced with" else "Merged in"
-            _status.value = "$verb ${preview.manifest.noteCount} notes."
+            _status.value = "$verb ${preview.manifest.noteCount} notes, " +
+                "${preview.manifest.diaryEntryCount} diary entries, ${preview.manifest.eventCount} events, " +
+                "and ${preview.manifest.reminderCount} reminders."
         }
     }
 

@@ -37,7 +37,8 @@ data class ItemDraft(
     val start: Long,
     val end: Long,
     val notes: String = "",
-    val recurrence: Recurrence = Recurrence.NONE
+    val recurrence: Recurrence = Recurrence.NONE,
+    val notificationLeadMinutes: Int? = null
 )
 
 object CalendarExpand {

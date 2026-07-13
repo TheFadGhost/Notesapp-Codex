@@ -177,3 +177,44 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         MemoryFts.create(db)
     }
 }
+
+/**
+ * v8 -> v9: calendar notification provenance and idempotency.
+ *
+ * Reminders retain the note that produced them and the effective trigger/snooze slot that
+ * was last posted. Events gain an optional notification lead plus the logical occurrence
+ * last posted. All columns are nullable so existing rows keep their old behaviour (event
+ * alerts off, no source link, no delivery claimed).
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `Reminder` ADD COLUMN `sourceNoteId` INTEGER " +
+                "REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL"
+        )
+        db.execSQL("ALTER TABLE `Reminder` ADD COLUMN `lastNotifiedTriggerAt` INTEGER")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_Reminder_sourceNoteId` " +
+                "ON `Reminder` (`sourceNoteId`)"
+        )
+
+        db.execSQL("ALTER TABLE `Event` ADD COLUMN `notificationLeadMinutes` INTEGER")
+        db.execSQL("ALTER TABLE `Event` ADD COLUMN `lastNotifiedOccurrenceAt` INTEGER")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_Event_notificationLeadMinutes` " +
+                "ON `Event` (`notificationLeadMinutes`)"
+        )
+    }
+}
+
+/** The exact migration set used by production and runtime-open instrumentation tests. */
+val NOTES_MIGRATIONS: Array<Migration> = arrayOf(
+    MIGRATION_1_2,
+    MIGRATION_2_3,
+    MIGRATION_3_4,
+    MIGRATION_4_5,
+    MIGRATION_5_6,
+    MIGRATION_6_7,
+    MIGRATION_7_8,
+    MIGRATION_8_9
+)

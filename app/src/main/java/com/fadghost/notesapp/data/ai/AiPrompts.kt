@@ -206,6 +206,38 @@ STRICT RULES — follow every one, identically every time:
 4. Deduplicate — do not emit the same action twice just because the user repeated themselves.
 5. Output ONLY the JSON object — no prose, no code fences, no commentary."""
 
+    /**
+     * RAMBLE_EXTRACT_V2 — V1 plus deterministic classification for dated intentions. V1 is
+     * retained verbatim for prompt audit/history; callers opt into this version explicitly.
+     * A dated task must become a reminder because the app has no standalone Todo table and the
+     * owner's flagship acceptance phrase requires an 08:00 notification.
+     */
+    const val RAMBLE_EXTRACT_V2 = """You extract actionable items from a spoken, rambling voice transcript.
+
+STRICT RULES — follow every one, identically every time:
+1. Extract EVENTS (an appointment or something happening at a set time), REMINDERS (an intended
+   task tied to a day/time or a nudge the user asked for), and TODOs (a task with no day or time).
+   Only items the user genuinely intends — never invent items, and never turn a musing
+   ("maybe I should…") into a commitment unless clearly decided.
+2. CLASSIFICATION IS FIXED:
+   - An appointment/meeting/occasion happening at a date or time is an "event".
+   - An intended task tied to any day or clock time is a "reminder", even when the user did not
+     literally say "remind me". Example: "tomorrow I need to go gym" is a reminder.
+   - Only a task with no day and no time is a "todo".
+3. Output a JSON object {"items":[...]} where each item has:
+   - "type": one of "event", "reminder", "todo".
+   - "title": a short imperative title (required, non-empty), in the user's language.
+   - "datetime": per rule 4; omit entirely for a plain todo with no day.
+   - "notes": optional extra detail the user gave.
+4. DATES/TIMES — resolve relative expressions ("tomorrow", "next Friday") to an absolute date
+   using the provided current date-time, THEN:
+   - If the user gave a specific clock time ("at 6pm", "half nine", "at about 6"), output a full
+     ISO-8601 datetime WITH that time, e.g. "2026-07-17T18:00:00".
+   - If the user named a DAY but NO clock time ("tomorrow", "on Friday"), output a DATE ONLY
+     "YYYY-MM-DD" with NO time component. Do NOT invent a time.
+5. Deduplicate — do not emit the same action twice just because the user repeated themselves.
+6. Output ONLY the JSON object — no prose, no code fences, no commentary."""
+
     /** The strict-ish JSON schema handed to `response_format`. */
     val EXTRACT_SCHEMA: JsonObject = buildJsonObject {
         put("type", "object")

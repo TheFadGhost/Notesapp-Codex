@@ -97,6 +97,10 @@ interface NoteDao {
     @Query("SELECT * FROM Note WHERE deletedAt IS NULL ORDER BY id")
     suspend fun allForExport(): List<Note>
 
+    /** Every live/archive/trash row; REPLACE restore must not leave Trash behind. */
+    @Query("SELECT * FROM Note ORDER BY id")
+    suspend fun allForReplace(): List<Note>
+
     // --- Full-text search (regular FTS5 table, joined back for filtering) --------
 
     @RawQuery(observedEntities = [Note::class])
@@ -142,8 +146,9 @@ interface FolderDao {
 
 @Dao
 interface TagDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(tag: Tag): Long
+    /** Never REPLACE a unique-name collision: REPLACE would cascade-delete note links. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(tag: Tag): Long
 
     @Delete
     suspend fun delete(tag: Tag)
@@ -159,6 +164,9 @@ interface TagDao {
 
     @Query("SELECT * FROM Tag WHERE name = :name LIMIT 1")
     suspend fun getByName(name: String): Tag?
+
+    @Query("SELECT * FROM Tag WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getByNormalizedName(name: String): Tag?
 
     @Query("SELECT * FROM Tag WHERE id = :id")
     suspend fun getById(id: Long): Tag?
@@ -212,6 +220,12 @@ interface DiaryDao {
 
     @Query("SELECT * FROM DiaryEntry ORDER BY date DESC")
     fun observeAll(): Flow<List<DiaryEntry>>
+
+    @Query("SELECT * FROM DiaryEntry ORDER BY date")
+    suspend fun allForBackup(): List<DiaryEntry>
+
+    @Query("DELETE FROM DiaryEntry")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -230,6 +244,29 @@ interface EventDao {
 
     @Query("SELECT * FROM Event WHERE id = :id")
     suspend fun getById(id: Long): Event?
+
+    @Query("SELECT * FROM Event WHERE notificationLeadMinutes IS NOT NULL")
+    suspend fun allWithNotifications(): List<Event>
+
+    @Query("SELECT * FROM Event ORDER BY id")
+    suspend fun allForBackup(): List<Event>
+
+    @Query("DELETE FROM Event")
+    suspend fun deleteAll()
+
+    /** Atomically claim one logical occurrence; returns 1 only for its first delivery. */
+    @Query(
+        "UPDATE Event SET lastNotifiedOccurrenceAt = :occurrenceAt " +
+            "WHERE id = :id AND notificationLeadMinutes IS NOT NULL " +
+            "AND (lastNotifiedOccurrenceAt IS NULL OR lastNotifiedOccurrenceAt != :occurrenceAt)"
+    )
+    suspend fun claimNotification(id: Long, occurrenceAt: Long): Int
+
+    @Query(
+        "UPDATE Event SET lastNotifiedOccurrenceAt = NULL " +
+            "WHERE id = :id AND lastNotifiedOccurrenceAt = :occurrenceAt"
+    )
+    suspend fun releaseNotificationClaim(id: Long, occurrenceAt: Long)
 
     @Query("DELETE FROM Event WHERE id = :id")
     suspend fun deleteById(id: Long)
@@ -256,11 +293,32 @@ interface ReminderDao {
     @Query("SELECT * FROM Reminder WHERE done = 0")
     suspend fun allPending(): List<Reminder>
 
+    @Query("SELECT * FROM Reminder ORDER BY id")
+    suspend fun allForBackup(): List<Reminder>
+
+    @Query("DELETE FROM Reminder")
+    suspend fun deleteAll()
+
     @Query("UPDATE Reminder SET done = :done WHERE id = :id")
     suspend fun setDone(id: Long, done: Boolean)
 
     @Query("UPDATE Reminder SET triggerAt = :triggerAt, snoozedUntil = :snoozedUntil WHERE id = :id")
     suspend fun reschedule(id: Long, triggerAt: Long, snoozedUntil: Long?)
+
+    /** Claim the row's current effective trigger exactly once before posting a notification. */
+    @Query(
+        "UPDATE Reminder SET lastNotifiedTriggerAt = :scheduledAt " +
+            "WHERE id = :id AND done = 0 " +
+            "AND COALESCE(snoozedUntil, triggerAt) = :scheduledAt " +
+            "AND (lastNotifiedTriggerAt IS NULL OR lastNotifiedTriggerAt != :scheduledAt)"
+    )
+    suspend fun claimNotification(id: Long, scheduledAt: Long): Int
+
+    @Query(
+        "UPDATE Reminder SET lastNotifiedTriggerAt = NULL " +
+            "WHERE id = :id AND lastNotifiedTriggerAt = :scheduledAt"
+    )
+    suspend fun releaseNotificationClaim(id: Long, scheduledAt: Long)
 
     @Query("DELETE FROM Reminder WHERE id = :id")
     suspend fun deleteById(id: Long)

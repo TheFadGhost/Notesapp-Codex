@@ -3,6 +3,8 @@ package com.fadghost.notesapp.ui.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fadghost.notesapp.alarm.AlarmScheduler
+import com.fadghost.notesapp.alarm.EventAlarm
+import com.fadghost.notesapp.calendar.EventNotificationMath
 import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.entity.Event
@@ -22,7 +24,8 @@ import javax.inject.Inject
 /** Base rows the screen expands into occurrences (see [CalendarExpand]). */
 data class CalendarData(
     val events: List<Event> = emptyList(),
-    val reminders: List<Reminder> = emptyList()
+    val reminders: List<Reminder> = emptyList(),
+    val loaded: Boolean = false
 )
 
 /**
@@ -35,12 +38,13 @@ data class CalendarData(
 class CalendarViewModel @Inject constructor(
     private val eventDao: EventDao,
     private val reminderDao: ReminderDao,
-    private val alarmScheduler: AlarmScheduler
+    private val alarmScheduler: AlarmScheduler,
+    private val eventAlarm: EventAlarm
 ) : ViewModel() {
 
     val data: StateFlow<CalendarData> =
         combine(eventDao.observeAll(), reminderDao.observeAll()) { events, reminders ->
-            CalendarData(events, reminders)
+            CalendarData(events, reminders, loaded = true)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarData())
 
     // --- Universal undo snackbar for deletes (ux.md P1-6) -----------------------
@@ -62,10 +66,18 @@ class CalendarViewModel @Inject constructor(
         endAt: Long,
         timezone: String,
         notes: String?,
-        recurrence: Recurrence
+        recurrence: Recurrence,
+        notificationLeadMinutes: Int? = null
     ) {
         viewModelScope.launch {
-            eventDao.upsert(
+            val existing = baseId.takeIf { it > 0L }?.let { eventDao.getById(it) }
+            val lead = EventNotificationMath.normalizedLeadMinutes(notificationLeadMinutes)
+            val scheduleUnchanged = existing != null &&
+                existing.startAt == startAt &&
+                existing.timezone == timezone &&
+                existing.recurrence == recurrence &&
+                existing.notificationLeadMinutes == lead
+            val insertedId = eventDao.upsert(
                 Event(
                     id = baseId,
                     title = title.trim().ifBlank { "Event" },
@@ -73,18 +85,30 @@ class CalendarViewModel @Inject constructor(
                     endAt = endAt.coerceAtLeast(startAt),
                     timezone = timezone,
                     notes = notes?.trim()?.takeIf { it.isNotBlank() },
-                    recurrence = recurrence
+                    recurrence = recurrence,
+                    notificationLeadMinutes = lead,
+                    lastNotifiedOccurrenceAt = existing?.lastNotifiedOccurrenceAt
+                        .takeIf { scheduleUnchanged }
                 )
             )
+            val effectiveId = if (baseId > 0L) baseId else insertedId
+            // Clear any stale pending/displayed alert for the old schedule before
+            // arming the freshly persisted settings.
+            eventAlarm.cancelEvent(effectiveId)
+            eventDao.getById(effectiveId)?.let(eventAlarm::scheduleEvent)
         }
     }
 
     fun deleteEvent(baseId: Long) {
         viewModelScope.launch {
             val existing = eventDao.getById(baseId)
+            eventAlarm.cancelEvent(baseId)
             eventDao.deleteById(baseId)
             if (existing != null) {
-                offerUndo("Event deleted") { eventDao.upsert(existing) }
+                offerUndo("Event deleted") {
+                    eventDao.upsert(existing)
+                    eventAlarm.scheduleEvent(existing)
+                }
             }
         }
     }
@@ -99,6 +123,12 @@ class CalendarViewModel @Inject constructor(
         recurrence: Recurrence
     ) {
         viewModelScope.launch {
+            val existing = baseId.takeIf { it > 0L }?.let { reminderDao.getById(it) }
+            val scheduleUnchanged = existing != null &&
+                existing.triggerAt == triggerAt &&
+                existing.timezone == timezone &&
+                existing.recurrence == recurrence &&
+                existing.snoozedUntil == null
             val id = reminderDao.upsert(
                 Reminder(
                     id = baseId,
@@ -107,7 +137,10 @@ class CalendarViewModel @Inject constructor(
                     timezone = timezone,
                     done = false,
                     snoozedUntil = null,
-                    recurrence = recurrence
+                    recurrence = recurrence,
+                    sourceNoteId = existing?.sourceNoteId,
+                    lastNotifiedTriggerAt = existing?.lastNotifiedTriggerAt
+                        .takeIf { scheduleUnchanged }
                 )
             )
             val effectiveId = if (baseId != 0L) baseId else id

@@ -62,6 +62,7 @@ import com.fadghost.notesapp.ui.capture.CaptureRequest
 import com.fadghost.notesapp.ui.DraftRecoveryViewModel
 import com.fadghost.notesapp.ui.diary.DiaryNavViewModel
 import com.fadghost.notesapp.ui.diary.DiaryScreen
+import com.fadghost.notesapp.ui.ask.AskScreen
 import com.fadghost.notesapp.ui.editor.EditorScreen
 import com.fadghost.notesapp.ui.calendar.CalendarDeepLink
 import com.fadghost.notesapp.ui.calendar.CalendarScreen
@@ -79,7 +80,8 @@ fun AppShell(
     onSelectThemeMode: (ThemeMode) -> Unit,
     draftRecovery: DraftRecoveryViewModel = hiltViewModel(),
     diaryNav: DiaryNavViewModel = hiltViewModel(),
-    captureVm: com.fadghost.notesapp.ui.capture.CaptureViewModel = hiltViewModel()
+    captureVm: com.fadghost.notesapp.ui.capture.CaptureViewModel = hiltViewModel(),
+    rambleVm: com.fadghost.notesapp.ui.voice.RambleViewModel = hiltViewModel()
 ) {
     val tokens = Aura.tokens
     val reduceMotion = LocalReduceMotion.current
@@ -102,6 +104,11 @@ fun AppShell(
     LaunchedEffect(captureRequest) {
         when (val req = captureRequest) {
             is CaptureRequest.NewNote -> { editorNoteId = 0L; restoringDraft = false }
+            is CaptureRequest.OpenNote -> {
+                selectedTab = NavTab.NOTES
+                editorNoteId = req.noteId
+                restoringDraft = false
+            }
             // Voice shortcut goes straight to the recording sheet (direct action).
             is CaptureRequest.Voice -> { editorNoteId = null; showVoiceCapture = true }
             is CaptureRequest.TodayDiary -> { selectedTab = NavTab.DIARY; editorNoteId = null }
@@ -139,15 +146,15 @@ fun AppShell(
     // opens the item's edit sheet from CalendarDeepLink. Same recreation-replay guard as
     // above (P0-3): a reminder id still sitting in the relay (e.g. its reminder was
     // deleted so CalendarScreen never cleared it) must not re-navigate after a recreation.
-    val calendarDeepLink by CalendarDeepLink.pendingReminderId.collectAsStateWithLifecycle()
-    var handledReminderId by rememberSaveable { mutableStateOf(-1L) }
+    val calendarDeepLink by CalendarDeepLink.pendingRequest.collectAsStateWithLifecycle()
+    var handledCalendarToken by rememberSaveable { mutableStateOf(-1L) }
     LaunchedEffect(calendarDeepLink) {
-        val id = calendarDeepLink
-        if (id == null) {
+        val request = calendarDeepLink
+        if (request == null) {
             // Relay cleared → allow the same id to re-navigate if tapped again later.
-            handledReminderId = -1L
-        } else if (id != handledReminderId) {
-            handledReminderId = id
+            handledCalendarToken = -1L
+        } else if (request.token != handledCalendarToken) {
+            handledCalendarToken = request.token
             selectedTab = NavTab.CALENDAR
             editorNoteId = null
         }
@@ -229,6 +236,7 @@ fun AppShell(
                             NavTab.NOTES -> NotesScreen(onOpenNote = { editorNoteId = it })
                             NavTab.DIARY -> DiaryScreen()
                             NavTab.CALENDAR -> CalendarScreen()
+                            NavTab.ASK -> AskScreen(onOpenNote = { editorNoteId = it })
                             NavTab.SETTINGS -> SettingsScreen(
                                 currentMode = themeMode,
                                 onSelectMode = onSelectThemeMode
@@ -309,7 +317,7 @@ fun AppShell(
         // out while the editor is open.
         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
         // Width-only: identical on every tab so the pill anchor never shifts between tabs.
-        // At ultra-narrow widths (≈122dp, the 320px repro) the FAB is dropped so all four
+        // At ultra-narrow widths (≈122dp, the 320px repro) the FAB is dropped so all five
         // tabs keep equal, on-screen, tappable widths instead of clipping off the edge.
         val fabReserved = navShowFab(screenWidth)
         val slotWidth = navTabSlotWidth(screenWidth, fabReserved)
@@ -370,12 +378,11 @@ fun AppShell(
         )
 
         // Voice ramble from the capture panel → transcribe into a fresh note, then open it.
-        com.fadghost.notesapp.ui.voice.VoiceRecordingSheet(
+        com.fadghost.notesapp.ui.voice.RambleCaptureSheet(
             visible = showVoiceCapture,
-            targetNoteId = 0L,
-            appendMode = false,
             onDismiss = { showVoiceCapture = false },
-            onNewNoteReady = { id -> showVoiceCapture = false; editorNoteId = id }
+            onOpenNote = { id -> showVoiceCapture = false; editorNoteId = id },
+            viewModel = rambleVm
         )
 
         // Editor overlay above the whole shell.

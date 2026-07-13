@@ -24,7 +24,7 @@ val NavTabSlotMin: Dp = 44.dp
 /**
  * Absolute floor a tab slot may shrink to before the FAB is dropped. Low enough that even
  * a ~122dp effective width (320px on a 420dpi / 2.625× device — the `wm size 320x640`
- * repro) still seats four equal, on-screen, tappable tabs instead of clipping the last
+ * repro) still seats five equal, on-screen tabs instead of clipping the last
  * tab and the FAB off the right edge (P0-2, the real width-math bug).
  */
 private val NavTabSlotFloor: Dp = 18.dp
@@ -33,7 +33,7 @@ private val NavClusterSideMargin: Dp = 12.dp
 /**
  * The screen is wide enough to seat the capture FAB beside the pill AND still give every
  * tab at least a comfortable [NavTabSlotMin]. Below this the FAB's slot is NOT reserved,
- * so the four tabs keep equal, tappable widths at ultra-narrow widths (task: the FAB is
+ * so the tabs keep equal widths at ultra-narrow widths (task: the FAB is
  * "intentionally + cleanly handled at ultra-narrow width"). Width-only so the pill's
  * horizontal anchor is identical on every tab at a given width (P2-6).
  */
@@ -43,12 +43,12 @@ fun navShowFab(screenWidth: Dp, tabCount: Int = NavTab.entries.size): Boolean {
 }
 
 /**
- * Responsive tab-slot width. All four tabs ALWAYS fit the ACTUAL screen width — they
+ * Responsive tab-slot width. All tabs ALWAYS fit the ACTUAL screen width — they
  * shrink evenly, never clip, never drop (P0-2). When [reserveFab] the FAB column stays in
  * the budget (wide screens); the shell passes [navShowFab] so the pill anchor matches on
  * every tab. Coerced to [NavTabSlotFloor]..[NavTabSlotMax]; the floor is small enough that
  * a ~122dp width still fits without overflow. Examples: 411dp → 56dp (capped, FAB on);
- * true 320dp → 52dp (FAB on); ~122dp → ~20dp (FAB off, all four still on-screen).
+ * true 320dp → 56dp (FAB off); ~122dp → 18dp (FAB off, all five still on-screen).
  */
 fun navTabSlotWidth(
     screenWidth: Dp,

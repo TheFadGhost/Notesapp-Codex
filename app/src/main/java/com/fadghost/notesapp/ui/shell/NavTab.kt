@@ -4,5 +4,6 @@ enum class NavTab(val label: String, val icon: AuraIcon) {
     NOTES("Notes", AuraIcon.NOTES),
     DIARY("Diary", AuraIcon.DIARY),
     CALENDAR("Calendar", AuraIcon.CALENDAR),
+    ASK("Ask", AuraIcon.ASK),
     SETTINGS("Settings", AuraIcon.SETTINGS)
 }

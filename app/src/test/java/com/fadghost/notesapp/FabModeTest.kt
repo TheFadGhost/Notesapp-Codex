@@ -27,12 +27,15 @@ class FabModeTest {
         assertEquals(FabMode.HIDDEN, fabModeFor(NavTab.SETTINGS))
     }
 
-    @Test fun `only settings hides the fab`() {
+    @Test fun `ask has no fab`() {
+        assertEquals(FabMode.HIDDEN, fabModeFor(NavTab.ASK))
+    }
+
+    @Test fun `ask and settings hide the fab`() {
         assertFalse(FabMode.HIDDEN.visible)
         assertTrue(FabMode.CAPTURE_PANEL.visible)
         assertTrue(FabMode.DIARY_TODAY.visible)
         assertTrue(FabMode.CALENDAR_NEW.visible)
-        // Exactly one tab hides the FAB.
-        assertEquals(1, NavTab.entries.count { !fabModeFor(it).visible })
+        assertEquals(2, NavTab.entries.count { !fabModeFor(it).visible })
     }
 }

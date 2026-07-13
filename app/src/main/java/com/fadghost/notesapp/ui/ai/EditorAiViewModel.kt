@@ -131,6 +131,7 @@ class EditorAiViewModel @Inject constructor(
     private var memoryJob: Job? = null
     private var cardSeq = 0L
     private var noteIdForRun = 0L
+    private var extractSourceNoteId: Long? = null
     private var textForRun = ""
     private val insertedRows = ArrayList<InsertedRow>()
     /** The action the current Undo snackbar performs (extract batch OR memory save). */
@@ -270,6 +271,7 @@ class EditorAiViewModel @Inject constructor(
 
     fun startExtract(noteId: Long, text: String) {
         if (text.isBlank()) return
+        extractSourceNoteId = noteId.takeIf { it > 0 }
         insertedRows.clear()
         _extract.value = ExtractState(active = true, loading = true)
         viewModelScope.launch {
@@ -317,7 +319,7 @@ class EditorAiViewModel @Inject constructor(
     fun acceptCard(id: Long) {
         val card = _extract.value.cards.firstOrNull { it.id == id } ?: return
         viewModelScope.launch {
-            repo.insertAction(card.action)?.let { insertedRows += it }
+            repo.insertAction(card.action, extractSourceNoteId)?.let { insertedRows += it }
             _extract.value = _extract.value.copy(
                 cards = _extract.value.cards.filterNot { it.id == id },
                 acceptedCount = _extract.value.acceptedCount + 1
@@ -330,7 +332,9 @@ class EditorAiViewModel @Inject constructor(
         val cards = _extract.value.cards
         if (cards.isEmpty()) return
         viewModelScope.launch {
-            cards.forEach { c -> repo.insertAction(c.action)?.let { insertedRows += it } }
+            cards.forEach { c ->
+                repo.insertAction(c.action, extractSourceNoteId)?.let { insertedRows += it }
+            }
             _extract.value = _extract.value.copy(cards = emptyList(), acceptedCount = _extract.value.acceptedCount + cards.size)
             offerUndoAll()
         }

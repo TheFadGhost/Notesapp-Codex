@@ -1,6 +1,7 @@
 package com.fadghost.notesapp.ui.calendar
 
 import android.Manifest
+import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -39,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.AuraUndoSnackbar
@@ -94,7 +99,7 @@ fun CalendarScreen(
     val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val navPillClearance = LocalNavPillClearance.current
-    val deepLinkReminderId by CalendarDeepLink.pendingReminderId.collectAsStateWithLifecycle()
+    val deepLinkRequest by CalendarDeepLink.pendingRequest.collectAsStateWithLifecycle()
 
     val today = remember { LocalDate.now(zone) }
     var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
@@ -123,15 +128,34 @@ fun CalendarScreen(
     }
 
     // Deep-link from a reminder notification → open its edit sheet.
-    LaunchedEffect(deepLinkReminderId, data.reminders) {
-        val id = deepLinkReminderId ?: return@LaunchedEffect
-        data.reminders.firstOrNull { it.id == id }?.let { r ->
-            draft = ItemDraft(
-                baseId = r.id, kind = CalendarKind.REMINDER, title = r.title,
-                start = r.triggerAt, end = r.triggerAt, notes = "", recurrence = r.recurrence
-            )
-            CalendarDeepLink.clear()
+    LaunchedEffect(deepLinkRequest, data.loaded, data.events, data.reminders) {
+        val request = deepLinkRequest ?: return@LaunchedEffect
+        if (!data.loaded) return@LaunchedEffect
+        draft = when (val target = request.target) {
+            is CalendarDeepLinkTarget.Reminder -> data.reminders.firstOrNull { it.id == target.id }?.let { r ->
+                ItemDraft(
+                    baseId = r.id,
+                    kind = CalendarKind.REMINDER,
+                    title = r.title,
+                    start = r.triggerAt,
+                    end = r.triggerAt,
+                    recurrence = r.recurrence
+                )
+            }
+            is CalendarDeepLinkTarget.Event -> data.events.firstOrNull { it.id == target.id }?.let { e ->
+                ItemDraft(
+                    baseId = e.id,
+                    kind = CalendarKind.EVENT,
+                    title = e.title,
+                    start = e.startAt,
+                    end = e.endAt,
+                    notes = e.notes.orEmpty(),
+                    recurrence = e.recurrence,
+                    notificationLeadMinutes = e.notificationLeadMinutes
+                )
+            }
         }
+        CalendarDeepLink.consume(request.token)
     }
 
     // Occurrence expansion window covers the visible grid and ~4 months of agenda.
@@ -155,11 +179,27 @@ fun CalendarScreen(
     fun editItem(item: CalendarItem) {
         draft = if (item.kind == CalendarKind.EVENT) {
             data.events.firstOrNull { it.id == item.baseId }?.let { e ->
-                ItemDraft(e.id, CalendarKind.EVENT, e.title, e.startAt, e.endAt, e.notes ?: "", e.recurrence)
+                ItemDraft(
+                    baseId = e.id,
+                    kind = CalendarKind.EVENT,
+                    title = e.title,
+                    start = e.startAt,
+                    end = e.endAt,
+                    notes = e.notes.orEmpty(),
+                    recurrence = e.recurrence,
+                    notificationLeadMinutes = e.notificationLeadMinutes
+                )
             }
         } else {
             data.reminders.firstOrNull { it.id == item.baseId }?.let { r ->
-                ItemDraft(r.id, CalendarKind.REMINDER, r.title, r.triggerAt, r.triggerAt, "", r.recurrence)
+                ItemDraft(
+                    baseId = r.id,
+                    kind = CalendarKind.REMINDER,
+                    title = r.title,
+                    start = r.triggerAt,
+                    end = r.triggerAt,
+                    recurrence = r.recurrence
+                )
             }
         }
     }
@@ -270,7 +310,16 @@ fun CalendarScreen(
             onDismiss = { draft = null },
             onSave = { d ->
                 if (d.kind == CalendarKind.EVENT) {
-                    viewModel.saveEvent(d.baseId, d.title, d.start, d.end, zone.id, d.notes, d.recurrence)
+                    viewModel.saveEvent(
+                        d.baseId,
+                        d.title,
+                        d.start,
+                        d.end,
+                        zone.id,
+                        d.notes,
+                        d.recurrence,
+                        d.notificationLeadMinutes
+                    )
                 } else {
                     viewModel.saveReminder(d.baseId, d.title, d.start, zone.id, d.recurrence)
                 }
@@ -521,7 +570,23 @@ private fun ReminderSetupCard(context: Context) {
     var dismissed by remember { mutableStateOf(false) }
     var notifGranted by remember { mutableStateOf(hasNotifPermission(context)) }
     var notifAsked by remember { mutableStateOf(false) }
-    val ignoringBattery = remember { isIgnoringBatteryOptimizations(context) }
+    var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var exactGranted by remember { mutableStateOf(canScheduleExactAlarms(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Settings screens do not return a result. Refresh every condition when the app
+    // resumes so the card disappears immediately after the user grants access.
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notifGranted = hasNotifPermission(context)
+                ignoringBattery = isIgnoringBatteryOptimizations(context)
+                exactGranted = canScheduleExactAlarms(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
         notifGranted = result
@@ -531,7 +596,8 @@ private fun ReminderSetupCard(context: Context) {
     val notifSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val notifNeeded = notifSupported && !notifGranted
     val batteryNeeded = !ignoringBattery
-    if (dismissed || (!notifNeeded && !batteryNeeded)) return
+    val exactNeeded = !exactGranted
+    if (dismissed || (!notifNeeded && !batteryNeeded && !exactNeeded)) return
 
     val tokens = Aura.tokens
     Column(
@@ -571,6 +637,16 @@ private fun ReminderSetupCard(context: Context) {
                 if (notifAsked) openAppNotificationSettings(context)
                 else launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+
+        if (exactNeeded) {
+            Spacer(Modifier.size(14.dp))
+            BasicText(
+                "Exact alarm access is off. Enable it so time-sensitive reminders and event alerts are not delayed.",
+                style = AuraType.label.copy(color = tokens.colors.textSecondary)
+            )
+            Spacer(Modifier.size(8.dp))
+            BannerAction("Enable exact alarms") { openExactAlarmSettings(context) }
         }
 
         if (batteryNeeded) {
@@ -630,6 +706,11 @@ private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
     return pm.isIgnoringBatteryOptimizations(context.packageName)
 }
 
+private fun canScheduleExactAlarms(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    return context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: false
+}
+
 private fun openAppNotificationSettings(context: Context) {
     val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -641,6 +722,23 @@ private fun openBatterySettings(context: Context) {
     // Deep-link to the OS exemption screen (PLAN.md §8).
     val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+        .onFailure {
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+}
+
+private fun openExactAlarmSettings(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val intent = Intent(
+        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+        Uri.parse("package:${context.packageName}")
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(intent) }
         .onFailure {
             runCatching {

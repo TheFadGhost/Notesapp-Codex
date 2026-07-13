@@ -46,6 +46,20 @@ class ActionInserterTest {
         override fun observeAll(): Flow<List<Reminder>> = emptyFlow()
         override suspend fun getById(id: Long): Reminder? = rows[id]
         override suspend fun allPending(): List<Reminder> = rows.values.filter { !it.done }
+        override suspend fun allForBackup(): List<Reminder> = rows.values.toList()
+        override suspend fun deleteAll() { rows.clear() }
+        override suspend fun claimNotification(id: Long, scheduledAt: Long): Int {
+            val row = rows[id] ?: return 0
+            val effectiveAt = row.snoozedUntil ?: row.triggerAt
+            if (row.done || effectiveAt != scheduledAt || row.lastNotifiedTriggerAt == scheduledAt) return 0
+            rows[id] = row.copy(lastNotifiedTriggerAt = scheduledAt)
+            return 1
+        }
+        override suspend fun releaseNotificationClaim(id: Long, scheduledAt: Long) {
+            rows[id]?.takeIf { it.lastNotifiedTriggerAt == scheduledAt }?.let {
+                rows[id] = it.copy(lastNotifiedTriggerAt = null)
+            }
+        }
         override suspend fun setDone(id: Long, done: Boolean) {
             rows[id]?.let { rows[id] = it.copy(done = done) }
         }
@@ -67,6 +81,21 @@ class ActionInserterTest {
         override fun observeInRange(from: Long, to: Long): Flow<List<Event>> = emptyFlow()
         override fun observeAll(): Flow<List<Event>> = emptyFlow()
         override suspend fun getById(id: Long): Event? = rows[id]
+        override suspend fun allWithNotifications(): List<Event> =
+            rows.values.filter { it.notificationLeadMinutes != null }
+        override suspend fun allForBackup(): List<Event> = rows.values.toList()
+        override suspend fun deleteAll() { rows.clear() }
+        override suspend fun claimNotification(id: Long, occurrenceAt: Long): Int {
+            val row = rows[id] ?: return 0
+            if (row.notificationLeadMinutes == null || row.lastNotifiedOccurrenceAt == occurrenceAt) return 0
+            rows[id] = row.copy(lastNotifiedOccurrenceAt = occurrenceAt)
+            return 1
+        }
+        override suspend fun releaseNotificationClaim(id: Long, occurrenceAt: Long) {
+            rows[id]?.takeIf { it.lastNotifiedOccurrenceAt == occurrenceAt }?.let {
+                rows[id] = it.copy(lastNotifiedOccurrenceAt = null)
+            }
+        }
         override suspend fun deleteById(id: Long) { rows.remove(id) }
     }
 
@@ -85,6 +114,18 @@ class ActionInserterTest {
         assertEquals(1, alarm.scheduled.size)
         assertEquals(id, alarm.scheduled[0].id)
         assertEquals(1_800_000_000_000L, alarm.scheduled[0].triggerAt)
+    }
+
+    @Test fun extracted_reminder_keeps_its_source_note() = runTest {
+        val alarm = RecordingAlarm()
+        val reminders = FakeReminderDao()
+        val inserter = ActionInserter(FakeEventDao(), reminders, alarm)
+
+        val row = inserter.insert(reminder(1_800_000_000_000L), sourceNoteId = 42L)
+
+        val id = (row as InsertedRow.ReminderRow).id
+        assertEquals(42L, reminders.rows.getValue(id).sourceNoteId)
+        assertEquals(42L, alarm.scheduled.single().sourceNoteId)
     }
 
     @Test fun undoing_reminder_cancels_the_alarm() = runTest {

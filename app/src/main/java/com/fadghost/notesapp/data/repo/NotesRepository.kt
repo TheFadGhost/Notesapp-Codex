@@ -3,22 +3,34 @@ package com.fadghost.notesapp.data.repo
 import android.content.Context
 import androidx.room.withTransaction
 import com.fadghost.notesapp.data.attach.AttachmentStorage
+import com.fadghost.notesapp.data.backup.AttachmentRestoreFiles
 import com.fadghost.notesapp.data.backup.BackupAttachment
 import com.fadghost.notesapp.data.backup.BackupData
+import com.fadghost.notesapp.data.backup.BackupDiaryEntry
+import com.fadghost.notesapp.data.backup.BackupEvent
 import com.fadghost.notesapp.data.backup.BackupFolder
+import com.fadghost.notesapp.data.backup.BackupImportResult
 import com.fadghost.notesapp.data.backup.BackupNote
+import com.fadghost.notesapp.data.backup.BackupReminder
 import com.fadghost.notesapp.data.backup.BackupTag
 import com.fadghost.notesapp.data.backup.ImportMode
 import com.fadghost.notesapp.data.db.NotesDatabase
 import com.fadghost.notesapp.data.db.dao.AttachmentDao
+import com.fadghost.notesapp.data.db.dao.DiaryDao
+import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.FolderDao
 import com.fadghost.notesapp.data.db.dao.NoteDao
 import com.fadghost.notesapp.data.db.dao.NoteTagRow
+import com.fadghost.notesapp.data.db.dao.ReminderDao
 import com.fadghost.notesapp.data.db.dao.TagDao
 import com.fadghost.notesapp.data.db.entity.Attachment
+import com.fadghost.notesapp.data.db.entity.DiaryEntry
+import com.fadghost.notesapp.data.db.entity.Event
 import com.fadghost.notesapp.data.db.entity.Folder
 import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.db.entity.NoteTagCrossRef
+import com.fadghost.notesapp.data.db.entity.Recurrence
+import com.fadghost.notesapp.data.db.entity.Reminder
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.util.Markdown
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,6 +55,10 @@ class NotesRepository @Inject constructor(
     private val tagDao: TagDao,
     private val folderDao: FolderDao,
     private val attachmentDao: AttachmentDao,
+    private val diaryDao: DiaryDao,
+    private val eventDao: EventDao,
+    private val reminderDao: ReminderDao,
+    private val attachmentRestoreFiles: AttachmentRestoreFiles,
     @ApplicationContext private val context: Context
 ) {
     // --- Observation ------------------------------------------------------------
@@ -154,12 +171,31 @@ class NotesRepository @Inject constructor(
     }
 
     suspend fun createTag(name: String, color: Int): Long {
-        val existing = tagDao.getByName(name)
-        return existing?.id ?: tagDao.upsert(Tag(name = name.trim(), color = color))
+        val normalized = TagNames.normalize(name)
+        require(normalized.isNotBlank()) { "Tag name cannot be blank" }
+        return db.withTransaction {
+            tagDao.getByNormalizedName(normalized)?.id ?: run {
+                val inserted = tagDao.insert(Tag(name = normalized, color = color))
+                if (inserted != -1L) inserted
+                else tagDao.getByNormalizedName(normalized)?.id
+                    ?: error("Tag name collision could not be resolved")
+            }
+        }
     }
 
-    suspend fun renameTag(id: Long, name: String) = tagDao.rename(id, name.trim())
+    suspend fun renameTag(id: Long, name: String) {
+        val normalized = TagNames.normalize(name)
+        require(normalized.isNotBlank()) { "Tag name cannot be blank" }
+        db.withTransaction {
+            val collision = tagDao.getByNormalizedName(normalized)
+            require(collision == null || collision.id == id) { "A tag with that name already exists" }
+            tagDao.rename(id, normalized)
+        }
+    }
     suspend fun setTagColor(id: Long, color: Int) = tagDao.setColor(id, color)
+
+    private fun tagKey(name: String): String =
+        TagNames.normalize(name).lowercase(Locale.ROOT)
 
     suspend fun deleteTag(id: Long) {
         db.withTransaction {
@@ -194,7 +230,25 @@ class NotesRepository @Inject constructor(
         val notes = noteDao.allForExport()
         val exportedIds = notes.map { it.id }.toHashSet()
         val folders = folderDao.all()
-        val folderById = folders.associateBy { it.id }
+        val backupFoldersByKey = LinkedHashMap<String, BackupFolder>()
+        val folderNameById = HashMap<Long, String>()
+        folders.forEach { folder ->
+            val normalized = TagNames.normalize(folder.name)
+            require(normalized.isNotBlank()) { "Cannot back up a blank folder name" }
+            val canonical = backupFoldersByKey.getOrPut(normalized.lowercase(Locale.ROOT)) {
+                BackupFolder(normalized)
+            }.name
+            folderNameById[folder.id] = canonical
+        }
+        val backupTagsByKey = LinkedHashMap<String, BackupTag>()
+        tagDao.all().forEach { tag ->
+            val normalized = TagNames.normalize(tag.name)
+            require(normalized.isNotBlank()) { "Cannot back up a blank tag name" }
+            backupTagsByKey.putIfAbsent(
+                normalized.lowercase(Locale.ROOT),
+                BackupTag(normalized, tag.color)
+            )
+        }
         val backupNotes = notes.map { n ->
             BackupNote(
                 id = n.id,
@@ -204,30 +258,70 @@ class NotesRepository @Inject constructor(
                 updatedAt = n.updatedAt,
                 pinned = n.pinned,
                 archived = n.archived,
-                folderName = n.folderId?.let { folderById[it]?.name },
-                tags = tagDao.tagsForNote(n.id).map { it.name }
+                folderName = n.folderId?.let(folderNameById::get),
+                tags = tagDao.tagsForNote(n.id)
+                    .mapNotNull { backupTagsByKey[tagKey(it.name)]?.name }
+                    .distinctBy(::tagKey)
             )
         }
-        val backupAttachments = attachmentDao.all()
-            .filter { it.noteId in exportedIds }
-            .map { a -> BackupAttachment(
+        val attachmentRows = attachmentDao.all().filter { it.noteId in exportedIds }
+        val exportedAttachmentIds = attachmentRows.mapTo(HashSet()) { it.id }
+        val backupAttachments = attachmentRows.map { a -> BackupAttachment(
                 id = a.id,
                 noteId = a.noteId,
                 kind = a.kind,
                 displayName = a.displayName,
                 mime = a.mime,
-                sizeBytes = a.sizeBytes,
+                sizeBytes = File(a.path).takeIf { it.isFile }?.length() ?: a.sizeBytes,
                 createdAt = a.createdAt,
-                annotatedOfId = a.annotatedOfId,
+                annotatedOfId = a.annotatedOfId?.takeIf { it in exportedAttachmentIds },
                 ocrText = a.ocrText,
                 description = a.description,
                 zipPath = attachmentZipPath(a.noteId, a.path)
             ) }
+        val backupDiary = diaryDao.allForBackup().map { entry ->
+            BackupDiaryEntry(
+                date = entry.date,
+                body = entry.body,
+                mood = entry.mood,
+                createdAt = entry.createdAt,
+                updatedAt = entry.updatedAt
+            )
+        }
+        val backupEvents = eventDao.allForBackup().map { event ->
+            BackupEvent(
+                id = event.id,
+                title = event.title,
+                startAt = event.startAt,
+                endAt = event.endAt,
+                timezone = event.timezone,
+                notes = event.notes,
+                recurrence = event.recurrence.name,
+                notificationLeadMinutes = event.notificationLeadMinutes,
+                lastNotifiedOccurrenceAt = event.lastNotifiedOccurrenceAt
+            )
+        }
+        val backupReminders = reminderDao.allForBackup().map { reminder ->
+            BackupReminder(
+                id = reminder.id,
+                title = reminder.title,
+                triggerAt = reminder.triggerAt,
+                timezone = reminder.timezone,
+                done = reminder.done,
+                snoozedUntil = reminder.snoozedUntil,
+                recurrence = reminder.recurrence.name,
+                sourceNoteId = reminder.sourceNoteId?.takeIf { it in exportedIds },
+                lastNotifiedTriggerAt = reminder.lastNotifiedTriggerAt
+            )
+        }
         return BackupData(
             notes = backupNotes,
-            folders = folders.map { BackupFolder(it.name) },
-            tags = tagDao.all().map { BackupTag(it.name, it.color) },
-            attachments = backupAttachments
+            folders = backupFoldersByKey.values.toList(),
+            tags = backupTagsByKey.values.toList(),
+            attachments = backupAttachments,
+            diaryEntries = backupDiary,
+            events = backupEvents,
+            reminders = backupReminders
         )
     }
 
@@ -236,38 +330,53 @@ class NotesRepository @Inject constructor(
         val exportedIds = noteDao.allForExport().map { it.id }.toHashSet()
         attachmentDao.all()
             .filter { it.noteId in exportedIds }
-            .mapNotNull { a ->
-                val bytes = runCatching { File(a.path).readBytes() }.getOrNull() ?: return@mapNotNull null
-                attachmentZipPath(a.noteId, a.path) to bytes
-            }.toMap()
+            .associate { a -> attachmentZipPath(a.noteId, a.path) to File(a.path).readBytes() }
     }
 
     private fun attachmentZipPath(noteId: Long, path: String): String =
         "attachments/$noteId/${File(path).name}"
 
-    /** Apply an imported backup. REPLACE wipes existing notes first; MERGE appends. */
+    /**
+     * Apply an imported backup. REPLACE clears live/archive/Trash notes plus diary and
+     * calendar rows; MERGE appends notes/events/reminders and keeps an existing diary
+     * entry when the imported backup contains the same date.
+     */
     suspend fun importBackup(
         data: BackupData,
         mode: ImportMode,
         attachmentFiles: Map<String, ByteArray> = emptyMap()
-    ) {
-        db.withTransaction {
-            if (mode == ImportMode.REPLACE) {
-                noteDao.allForExport().forEach { noteDao.hardDelete(it.id) }
-                folderDao.all().forEach { folderDao.deleteById(it.id) }
-                tagDao.all().forEach { tagDao.deleteById(it.id) }
-            }
-            val folderIds = HashMap<String, Long>()
-            data.folders.forEach { folderIds[it.name] = createFolder(it.name) }
-            val tagIds = HashMap<String, Long>()
-            data.tags.forEach { tagIds[it.name] = createTag(it.name, it.color) }
+    ): BackupImportResult {
+        val createdFiles = ArrayList<File>()
+        val replacedNoteIds = ArrayList<Long>()
+        val replacedEventIds = ArrayList<Long>()
+        val replacedReminderIds = ArrayList<Long>()
+        val restoredNoteIds = HashSet<Long>()
 
-            val now = System.currentTimeMillis()
-            val noteIdMap = HashMap<Long, Long>() // old backup note id -> new id
-            data.notes.forEach { bn ->
-                val folderId = bn.folderName?.let { folderIds[it] ?: createFolder(it) }
-                val newId = saveNote(
-                    Note(
+        try {
+            db.withTransaction {
+                if (mode == ImportMode.REPLACE) {
+                    replacedNoteIds += noteDao.allForReplace().map { it.id }
+                    replacedEventIds += eventDao.allForBackup().map { it.id }
+                    replacedReminderIds += reminderDao.allForBackup().map { it.id }
+                    eventDao.deleteAll()
+                    reminderDao.deleteAll()
+                    diaryDao.deleteAll()
+                    replacedNoteIds.forEach { noteDao.hardDelete(it) }
+                    clearFts()
+                    folderDao.all().forEach { folderDao.deleteById(it.id) }
+                    tagDao.all().forEach { tagDao.deleteById(it.id) }
+                }
+
+                val folderIds = HashMap<String, Long>()
+                data.folders.forEach { folderIds[it.name] = createFolder(it.name) }
+                val tagIds = HashMap<String, Long>()
+                data.tags.forEach { tag -> tagIds[tagKey(tag.name)] = createTag(tag.name, tag.color) }
+
+                val now = System.currentTimeMillis()
+                val noteIdMap = HashMap<Long, Long>() // old backup note id -> new id
+                data.notes.forEach { bn ->
+                    val folderId = bn.folderName?.let { folderIds[it] ?: createFolder(it) }
+                    val note = Note(
                         id = 0,
                         title = bn.title,
                         body = bn.body,
@@ -278,20 +387,89 @@ class NotesRepository @Inject constructor(
                         deletedAt = null,
                         folderId = folderId
                     )
-                )
-                noteIdMap[bn.id] = newId
-                bn.tags.forEach { tagName ->
-                    val tid = tagIds[tagName] ?: createTag(tagName, 0).also { tagIds[tagName] = it }
-                    tagDao.link(NoteTagCrossRef(newId, tid))
+                    val newId = noteDao.upsert(note)
+                    syncFts(newId, note.title, note.body)
+                    noteIdMap[bn.id] = newId
+                    restoredNoteIds += newId
+                    bn.tags.forEach { rawTagName ->
+                        val key = tagKey(rawTagName)
+                        val tagId = tagIds[key] ?: createTag(rawTagName, 0).also { tagIds[key] = it }
+                        tagDao.link(NoteTagCrossRef(newId, tagId))
+                    }
+                }
+
+                data.diaryEntries.forEach { backup ->
+                    if (mode == ImportMode.REPLACE || diaryDao.getByDate(backup.date) == null) {
+                        diaryDao.upsert(
+                            DiaryEntry(
+                                date = backup.date,
+                                body = backup.body,
+                                mood = backup.mood,
+                                createdAt = backup.createdAt,
+                                updatedAt = backup.updatedAt
+                            )
+                        )
+                    }
+                }
+                data.events.forEach { backup ->
+                    eventDao.upsert(
+                        Event(
+                            title = backup.title,
+                            startAt = backup.startAt,
+                            endAt = backup.endAt,
+                            timezone = backup.timezone,
+                            notes = backup.notes,
+                            recurrence = Recurrence.valueOf(backup.recurrence),
+                            notificationLeadMinutes = backup.notificationLeadMinutes,
+                            lastNotifiedOccurrenceAt = backup.lastNotifiedOccurrenceAt
+                        )
+                    )
+                }
+                data.reminders.forEach { backup ->
+                    reminderDao.upsert(
+                        Reminder(
+                            title = backup.title,
+                            triggerAt = backup.triggerAt,
+                            timezone = backup.timezone,
+                            done = backup.done,
+                            snoozedUntil = backup.snoozedUntil,
+                            recurrence = Recurrence.valueOf(backup.recurrence),
+                            sourceNoteId = backup.sourceNoteId?.let { noteIdMap[it] },
+                            lastNotifiedTriggerAt = backup.lastNotifiedTriggerAt
+                        )
+                    )
+                }
+
+                // Restore attachment files + rows, remapping every id (M-A). Note bodies'
+                // `[[att:<id>]]` tokens are rewritten so they still point at the right row.
+                if (data.attachments.isNotEmpty()) {
+                    restoreAttachments(data, attachmentFiles, noteIdMap, now, createdFiles)
                 }
             }
-
-            // Restore attachment files + rows, remapping every id (M-A). Note bodies'
-            // `[[att:<id>]]` tokens are rewritten so they still point at the right row.
-            if (data.attachments.isNotEmpty()) {
-                restoreAttachments(data, attachmentFiles, noteIdMap, now)
+        } catch (failure: Throwable) {
+            createdFiles.asReversed().forEach { file ->
+                runCatching { attachmentRestoreFiles.cleanup(file) }
+                    .exceptionOrNull()
+                    ?.let(failure::addSuppressed)
             }
+            throw failure
         }
+
+        if (mode == ImportMode.REPLACE) {
+            replacedNoteIds.asSequence()
+                .filterNot { it in restoredNoteIds }
+                .map(::attachmentDirFor)
+                .filter(File::exists)
+                .forEach { directory ->
+                    check(directory.deleteRecursively()) {
+                        "Could not remove replaced attachment directory: $directory"
+                    }
+                }
+        }
+        return BackupImportResult(
+            replacedReminderIds = replacedReminderIds,
+            replacedEventIds = replacedEventIds
+        )
     }
 
     /** Rebuild attachment files + rows and repoint note tokens; called inside the txn. */
@@ -299,16 +477,22 @@ class NotesRepository @Inject constructor(
         data: BackupData,
         attachmentFiles: Map<String, ByteArray>,
         noteIdMap: Map<Long, Long>,
-        now: Long
+        now: Long,
+        createdFiles: MutableList<File>
     ) {
         val attIdMap = HashMap<Long, Long>() // old attachment id -> new id
         val notesWithAttachments = HashSet<Long>()
         for (ba in data.attachments) {
-            val newNoteId = noteIdMap[ba.noteId] ?: continue
-            val bytes = attachmentFiles[ba.zipPath] ?: continue
+            val newNoteId = requireNotNull(noteIdMap[ba.noteId]) {
+                "Attachment references an unrestored note: ${ba.noteId}"
+            }
+            val bytes = requireNotNull(attachmentFiles[ba.zipPath]) {
+                "Attachment payload is missing: ${ba.zipPath}"
+            }
             val ext = AttachmentStorage.extFor(ba.displayName, ba.mime)
             val file = AttachmentStorage.newFile(AttachmentStorage.noteDir(context.filesDir, newNoteId), ext)
-            runCatching { file.writeBytes(bytes) }
+            createdFiles += file
+            attachmentRestoreFiles.write(file, bytes)
             val newId = attachmentDao.insert(
                 Attachment(
                     id = 0,
@@ -317,7 +501,7 @@ class NotesRepository @Inject constructor(
                     path = file.absolutePath,
                     displayName = ba.displayName,
                     mime = ba.mime,
-                    sizeBytes = ba.sizeBytes.takeIf { it > 0 } ?: bytes.size.toLong(),
+                    sizeBytes = bytes.size.toLong(),
                     createdAt = ba.createdAt.takeIf { it > 0 } ?: now,
                     annotatedOfId = null, // patched in the second pass once all ids are known
                     ocrText = ba.ocrText,
@@ -329,8 +513,11 @@ class NotesRepository @Inject constructor(
         }
         // Second pass: repoint annotatedOfId now that every id is mapped.
         for (ba in data.attachments) {
-            val newId = attIdMap[ba.id] ?: continue
-            val newAnnotatedOf = ba.annotatedOfId?.let { attIdMap[it] } ?: continue
+            val annotatedOfId = ba.annotatedOfId ?: continue
+            val newId = requireNotNull(attIdMap[ba.id]) { "Attachment id was not restored: ${ba.id}" }
+            val newAnnotatedOf = requireNotNull(attIdMap[annotatedOfId]) {
+                "Attachment annotation target was not restored: $annotatedOfId"
+            }
             attachmentDao.byId(newId)?.let { attachmentDao.update(it.copy(annotatedOfId = newAnnotatedOf)) }
         }
         // Rewrite `[[att:<old>]]` -> `[[att:<new>]]` in each restored note body.
@@ -413,6 +600,10 @@ class NotesRepository @Inject constructor(
 
     private fun deleteFts(id: Long) {
         db.openHelper.writableDatabase.execSQL("DELETE FROM note_fts WHERE rowid = ?", arrayOf<Any>(id))
+    }
+
+    private fun clearFts() {
+        db.openHelper.writableDatabase.execSQL("DELETE FROM note_fts")
     }
 
     // --- Attachments (dir scaffolding; real files land in later milestones) -----

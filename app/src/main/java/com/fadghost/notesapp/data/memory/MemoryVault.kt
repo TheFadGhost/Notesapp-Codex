@@ -1,7 +1,9 @@
 package com.fadghost.notesapp.data.memory
 
 import java.io.File
+import java.nio.charset.CharacterCodingException
 import java.security.MessageDigest
+import java.util.UUID
 
 /**
  * On-disk markdown vault (V3-PROMPTS.md §1.1) — the SOURCE OF TRUTH for memory:
@@ -108,18 +110,75 @@ object MemoryVault {
         return out
     }
 
-    /** Write vault files back from a backup (keys are ZIP paths like `memory/index.md`). */
-    fun importBytes(filesDir: File, files: Map<String, ByteArray>) {
-        ensureDirs(filesDir)
+    /**
+     * Import backup entry files through a sibling staging directory, then swap the
+     * complete vault into place. The backed-up `index.md` is deliberately ignored:
+     * it is derived and regenerated from the validated entry files.
+     *
+     * [replace] keeps only imported entries. Merge mode preserves unrelated local
+     * entries and lets imported slugs replace matching ones.
+     */
+    fun importBytes(filesDir: File, files: Map<String, ByteArray>, replace: Boolean) {
+        if (!replace && files.isEmpty()) return
+
+        val imported = LinkedHashMap<String, MemoryEntryModel>()
         for ((path, bytes) in files) {
-            if (!path.startsWith(ZIP_PREFIX)) continue
-            val rel = path.removePrefix(ZIP_PREFIX)
-            val target = when {
-                rel == INDEX_FILE -> indexFile(filesDir)
-                rel.startsWith("$ENTRIES_DIR/") -> File(entriesRoot(filesDir), File(rel).name)
-                else -> continue
+            require(path.startsWith(ZIP_PREFIX)) { "Invalid memory backup path: $path" }
+            val relative = path.removePrefix(ZIP_PREFIX)
+            if (relative == INDEX_FILE) continue
+            require(relative.matches(Regex("entries/[a-z0-9-]{1,40}\\.md"))) {
+                "Invalid memory backup path: $path"
             }
-            runCatching { target.writeBytes(bytes) }
+            val markdown = try {
+                bytes.decodeToString(throwOnInvalidSequence = true)
+            } catch (error: CharacterCodingException) {
+                throw IllegalArgumentException("Memory entry is not valid UTF-8: $path", error)
+            }
+            val model = MemoryEntryModel.parse(markdown)
+                ?: throw IllegalArgumentException("Memory entry is malformed: $path")
+            require(relative == "$ENTRIES_DIR/${model.fileName}") {
+                "Memory entry slug does not match its path: $path"
+            }
+            require(imported.put(model.slug, model) == null) {
+                "Duplicate memory slug: ${model.slug}"
+            }
+        }
+
+        val desired = LinkedHashMap<String, MemoryEntryModel>()
+        if (!replace) readAllEntries(filesDir).forEach { desired[it.slug] = it }
+        imported.forEach { (slug, model) -> desired[slug] = model }
+
+        val token = UUID.randomUUID().toString()
+        val stagingFilesDir = File(filesDir, ".memory-import-$token")
+        val previousRoot = File(filesDir, ".memory-before-$token")
+        val currentRoot = root(filesDir)
+        val stagedRoot = root(stagingFilesDir)
+        var movedCurrent = false
+        var installed = false
+
+        try {
+            require(stagingFilesDir.mkdirs()) { "Could not create memory import staging directory" }
+            writeEntries(stagingFilesDir, desired.values.toList())
+            require(readAllEntries(stagingFilesDir).size == desired.size) {
+                "Could not verify staged memory entries"
+            }
+
+            if (currentRoot.exists()) {
+                require(currentRoot.renameTo(previousRoot)) { "Could not stage the existing memory vault" }
+                movedCurrent = true
+            }
+            require(stagedRoot.renameTo(currentRoot)) { "Could not install the imported memory vault" }
+            installed = true
+        } catch (error: Exception) {
+            if (!installed && movedCurrent && !currentRoot.exists()) {
+                if (!previousRoot.renameTo(currentRoot)) {
+                    throw IllegalStateException("Memory import failed and the previous vault could not be restored", error)
+                }
+            }
+            throw error
+        } finally {
+            stagingFilesDir.deleteRecursively()
+            if (installed) previousRoot.deleteRecursively()
         }
     }
 }

@@ -66,4 +66,29 @@ class AudioStorageTest {
         assertEquals("1 KB", AudioStorage.formatSize(1024))
         assertEquals("1.0 MB", AudioStorage.formatSize(1024 * 1024))
     }
+
+    @Test fun eachCaptureGetsAnIsolatedNonOverwritingDirectory() {
+        val filesDir = tmp.newFolder("files")
+        val first = AudioStorage.recordingDir(filesDir, noteId = 9L, sessionId = "session_one")
+        val second = AudioStorage.recordingDir(filesDir, noteId = 9L, sessionId = "session_two")
+        assertTrue(first.absolutePath.endsWith("attachments${File.separator}9${File.separator}voice_session_one"))
+        assertTrue(second.absolutePath.endsWith("attachments${File.separator}9${File.separator}voice_session_two"))
+        assertTrue(first != second)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsTraversalInSessionId() {
+        val filesDir = tmp.newFolder("files")
+        AudioStorage.recordingDir(filesDir, noteId = 9L, sessionId = "../escape")
+    }
+
+    @Test fun pruningRemovesEmptyNestedCaptureDirectoriesBottomUp() {
+        val filesDir = tmp.newFolder("files")
+        val note = AudioStorage.noteDir(filesDir, 9L)
+        val capture = AudioStorage.recordingDir(filesDir, 9L, "finished")
+        capture.mkdirs()
+        assertEquals(2, AudioStorage.pruneEmptyDirectories(note))
+        assertTrue(!capture.exists())
+        assertTrue(!note.exists())
+    }
 }

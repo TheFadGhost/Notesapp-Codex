@@ -48,7 +48,9 @@ class AudioRecorder(
 
     fun start() {
         if (isRecording) return
-        if (!noteDir.exists()) noteDir.mkdirs()
+        if (!noteDir.exists() && !noteDir.mkdirs()) {
+            throw IllegalStateException("Could not create recording directory")
+        }
         startSegment(accumulator.nextIndex())
         isRecording = true
     }
@@ -58,22 +60,34 @@ class AudioRecorder(
         if (!isRecording || isPaused) return false
         if (!AudioSegments.shouldRollover(currentSegmentElapsedMs(), maxSegmentMs)) return false
         finalizeSegment()
-        startSegment(accumulator.nextIndex())
+        try {
+            startSegment(accumulator.nextIndex())
+        } catch (t: Throwable) {
+            isRecording = false
+            isPaused = false
+            throw t
+        }
         return true
     }
 
-    fun pause() {
-        if (!isRecording || isPaused) return
-        runCatching { recorder?.pause() }
+    fun pause(): Boolean {
+        if (!isRecording || isPaused) return false
+        val activeRecorder = recorder ?: return false
+        val paused = runCatching { activeRecorder.pause() }.isSuccess
+        if (!paused) return false
         pauseMark = SystemClock.elapsedRealtime()
         isPaused = true
+        return true
     }
 
-    fun resume() {
-        if (!isRecording || !isPaused) return
-        runCatching { recorder?.resume() }
+    fun resume(): Boolean {
+        if (!isRecording || !isPaused) return false
+        val activeRecorder = recorder ?: return false
+        val resumed = runCatching { activeRecorder.resume() }.isSuccess
+        if (!resumed) return false
         pausedTotal += SystemClock.elapsedRealtime() - pauseMark
         isPaused = false
+        return true
     }
 
     /** Finish recording and return every captured segment (in order). */
@@ -95,10 +109,19 @@ class AudioRecorder(
 
     private fun startSegment(index: Int) {
         val file = AudioStorage.segmentFile(noteDir, index)
-        val rec = buildRecorder().apply {
-            setOutputFile(file.absolutePath)
-            prepare()
-            start()
+        // A session is never resumed into an existing filename. Refusing to overwrite is
+        // safer than silently corrupting an attachment after a duplicated START command.
+        check(!file.exists()) { "Recording segment already exists: ${file.name}" }
+        val rec = buildRecorder()
+        try {
+            rec.setOutputFile(file.absolutePath)
+            rec.prepare()
+            rec.start()
+        } catch (t: Throwable) {
+            runCatching { rec.reset() }
+            runCatching { rec.release() }
+            runCatching { file.delete() }
+            throw t
         }
         recorder = rec
         currentFile = file
@@ -107,16 +130,22 @@ class AudioRecorder(
         isPaused = false
     }
 
-    private fun finalizeSegment() {
+    /** Finalise the current segment, retaining it only when MediaRecorder produced a real file. */
+    private fun finalizeSegment(): Boolean {
         val duration = currentSegmentElapsedMs()
         val file = currentFile
-        runCatching {
-            recorder?.stop()
-        }
-        runCatching { recorder?.release() }
+        val activeRecorder = recorder
+        val stoppedCleanly = activeRecorder != null && runCatching { activeRecorder.stop() }.isSuccess
+        runCatching { activeRecorder?.release() }
         recorder = null
-        if (file != null) accumulator.add(file.absolutePath, duration)
         currentFile = null
+        val valid = stoppedCleanly && file != null && duration > 0L && file.isFile && file.length() > 0L
+        if (valid) {
+            accumulator.add(file!!.absolutePath, duration)
+        } else {
+            runCatching { file?.delete() }
+        }
+        return valid
     }
 
     @Suppress("DEPRECATION")

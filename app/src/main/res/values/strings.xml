@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Notesapp</string>
+    <string name="app_name">Notesapp Codex</string>
 
     <!-- Quick-settings tile (PLAN.md §6) -->
     <string name="tile_new_note">New note</string>

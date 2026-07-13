@@ -29,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 import javax.inject.Inject
 import kotlin.math.sqrt
 
@@ -122,7 +123,10 @@ class VoiceRecordViewModel @Inject constructor(
 
     private fun actuallyStart() {
         wantStart = false
-        val rec = AudioRecorder(context, attachments.noteDir(resolveNoteId()))
+        // Each recording gets its own directory. Reusing the bare note directory would
+        // restart naming at segment_000.m4a and overwrite an older voice attachment.
+        val sessionId = UUID.randomUUID().toString()
+        val rec = AudioRecorder(context, attachments.recordingDir(resolveNoteId(), sessionId))
         recorder = rec
         viewModelScope.launch {
             // prepare()/start() are blocking MediaRecorder calls — keep them off Main.

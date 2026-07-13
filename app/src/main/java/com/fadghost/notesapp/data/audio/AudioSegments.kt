@@ -1,5 +1,7 @@
 package com.fadghost.notesapp.data.audio
 
+import kotlinx.serialization.Serializable
+
 /**
  * Pure segment-split bookkeeping for voice recording (PLAN.md §3: "clip cap ~5 min
  * per segment with auto-chunking"). Kept free of Android/MediaRecorder types so the
@@ -42,6 +44,7 @@ object AudioSegments {
 }
 
 /** One captured audio segment: its file path and measured duration. */
+@Serializable
 data class RecordedSegment(val path: String, val durationMs: Long)
 
 /**

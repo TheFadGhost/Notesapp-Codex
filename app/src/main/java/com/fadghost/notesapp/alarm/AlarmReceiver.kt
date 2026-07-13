@@ -12,40 +12,56 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 
-/**
- * Fires when a reminder's exact alarm goes off (PLAN.md §8). Posts the notification
- * and, for a repeating reminder, advances the row to the next occurrence and rearms
- * the alarm — "schedule next occurrence on fire", no edit-this-vs-all. Uses
- * [BroadcastReceiver.goAsync] to keep the process alive for the short DB write.
- */
+/** Delivers one reminder slot exactly once, then advances recurring rows. */
 class AlarmReceiver : BroadcastReceiver() {
-
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_FIRE) return
         val id = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
-        if (id <= 0) return
-
+        if (id <= 0L) return
         val pending = goAsync()
         val ep = EntryPointAccessors.fromApplication(context.applicationContext, AlarmEntryPoint::class.java)
         CoroutineScope(Dispatchers.IO).launch {
+            var claimedAt: Long? = null
+            var completed = false
             try {
-                val reminder = ep.reminderDao().getById(id)
-                if (reminder != null && !reminder.done) {
-                    ReminderNotifier.notify(context, reminder)
-                    if (reminder.recurrence != Recurrence.NONE) {
-                        val zone = runCatching { ZoneId.of(reminder.timezone) }.getOrDefault(ZoneId.systemDefault())
-                        // Anchor on the true recurrence slot (triggerAt, never a snoozed
-                        // time) and jump straight to the first occurrence after *now*:
-                        // after downtime this catches up in one hop instead of firing a
-                        // burst of back-to-back missed occurrences (audit M1).
-                        val next = RecurrenceMath.nextFrom(
-                            reminder.triggerAt, zone, reminder.recurrence, System.currentTimeMillis()
-                        )
-                        ep.reminderDao().reschedule(id, next, null)
-                        ep.alarmScheduler().scheduleReminder(reminder.copy(triggerAt = next, snoozedUntil = null))
-                    }
+                if (!ReminderNotifier.canNotify(context)) return@launch
+                val reminder = ep.reminderDao().getById(id) ?: return@launch
+                if (reminder.done) return@launch
+                val effectiveAt = reminder.snoozedUntil ?: reminder.triggerAt
+                val requestedAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, -1L)
+                    .takeIf { it > 0L } ?: effectiveAt
+                if (ep.reminderDao().claimNotification(id, requestedAt) != 1) return@launch
+                claimedAt = requestedAt
+
+                val liveSourceNoteId = reminder.sourceNoteId?.takeIf { noteId ->
+                    ep.noteDao().getById(noteId)?.let { it.deletedAt == null } == true
                 }
+                if (!ReminderNotifier.notify(context, reminder, liveSourceNoteId)) return@launch
+
+                if (reminder.recurrence != Recurrence.NONE) {
+                    val zone = runCatching { ZoneId.of(reminder.timezone) }
+                        .getOrDefault(ZoneId.systemDefault())
+                    val next = RecurrenceMath.nextFrom(
+                        reminder.triggerAt,
+                        zone,
+                        reminder.recurrence,
+                        System.currentTimeMillis()
+                    )
+                    ep.reminderDao().reschedule(id, next, null)
+                    ep.alarmScheduler().scheduleReminder(
+                        reminder.copy(
+                            triggerAt = next,
+                            snoozedUntil = null,
+                            lastNotifiedTriggerAt = requestedAt
+                        )
+                    )
+                }
+                completed = true
             } finally {
+                val claim = claimedAt
+                if (claim != null && !completed) {
+                    runCatching { ep.reminderDao().releaseNotificationClaim(id, claim) }
+                }
                 pending.finish()
             }
         }
@@ -54,5 +70,6 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_FIRE = "com.fadghost.notesapp.alarm.FIRE"
         const val EXTRA_REMINDER_ID = "reminder_id"
+        const val EXTRA_SCHEDULED_AT = "scheduled_at"
     }
 }

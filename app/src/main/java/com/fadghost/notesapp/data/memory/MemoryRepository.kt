@@ -126,10 +126,12 @@ class MemoryRepository @Inject constructor(
         MemoryVault.exportBytes(filesDir)
     }
 
-    /** Restore vault files from a backup, then rebuild the mirror from them. */
-    suspend fun importFiles(files: Map<String, ByteArray>) = withContext(Dispatchers.IO) {
-        if (files.isEmpty()) return@withContext
-        MemoryVault.importBytes(filesDir, files)
+    /** Restore vault files from a backup, then rebuild the Room/FTS mirror. */
+    suspend fun importFiles(
+        files: Map<String, ByteArray>,
+        replace: Boolean
+    ) = withContext(Dispatchers.IO) {
+        MemoryVault.importBytes(filesDir, files, replace)
         rebuildMirror()
     }
 
@@ -139,6 +141,11 @@ class MemoryRepository @Inject constructor(
     suspend fun search(query: String): List<MemoryEntry> = withContext(Dispatchers.IO) {
         val match = FtsQuery.build(query) ?: return@withContext dao.all()
         runCatching { dao.search(match) }.getOrDefault(emptyList())
+    }
+
+    /** Load an ordered, bounded set selected by the Ask retrieval router. */
+    suspend fun entriesBySlugs(slugs: List<String>): List<MemoryEntry> = withContext(Dispatchers.IO) {
+        slugs.distinct().take(8).mapNotNull { dao.byId(it) }
     }
 
     // --- Reconciliation (app start, background) ---------------------------------

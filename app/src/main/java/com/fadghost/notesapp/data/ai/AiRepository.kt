@@ -271,10 +271,27 @@ class AiRepository @Inject constructor(
     }
 
     /** Revise a single [action] using a free-text [instruction] (card "Other"). */
-    suspend fun reviseAction(action: ProposedAction, instruction: String, now: Long): ProposedAction? {
+    suspend fun reviseAction(action: ProposedAction, instruction: String, now: Long): ProposedAction? =
+        reviseActionWithParser(action, instruction, now, zone(), extractionParser)
+
+    /** Ramble-card revision keeps the same deterministic date-only -> 08:00 rule. */
+    suspend fun reviseRambleAction(
+        action: ProposedAction,
+        instruction: String,
+        now: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): ProposedAction? = reviseActionWithParser(action, instruction, now, zoneId, rambleExtractionParser)
+
+    private suspend fun reviseActionWithParser(
+        action: ProposedAction,
+        instruction: String,
+        now: Long,
+        zoneId: ZoneId,
+        parser: ActionExtractionParser
+    ): ProposedAction? {
         val key = requireKey()
         val model = prefs.textModel.first()
-        val nowIso = AiPrompts.nowIso(now, zone())
+        val nowIso = AiPrompts.nowIso(now, zoneId)
         val payload = buildString {
             append("Current item: type=${action.type.name.lowercase()}, title=${action.title}")
             action.datetimeMillis?.let { append(", datetime(ms)=$it") }
@@ -291,7 +308,7 @@ class AiRepository @Inject constructor(
         val res = client.complete(key, req)
         recordCost(res.usage, model, FEATURE_EXTRACT, action.hashCode().toLong())
         val single = "{\"items\":[${com.fadghost.notesapp.data.ai.parse.JsonExtractor.extract(res.content) ?: return null}]}"
-        val parsed = extractionParser.parse(single, now, zone())
+        val parsed = parser.parse(single, now, zoneId)
         return (parsed as? ExtractOutcome.Success)?.items?.firstOrNull() ?: action
     }
 
@@ -333,14 +350,19 @@ class AiRepository @Inject constructor(
      * NEW note (there's no live before/after sheet to stream into — the note IS the output).
      * Same prompt/params as [rewriteStream]; cost recorded. Throws [OpenRouterError].
      */
-    suspend fun rewriteOnce(text: String, noteId: Long?, now: Long): String {
+    suspend fun rewriteOnce(
+        text: String,
+        noteId: Long?,
+        now: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
         val key = requireKey()
         val model = prefs.textModel.first()
         val req = ChatRequest(
             model = model,
             messages = listOf(
                 ChatMessage.system(AiPrompts.REWRITE_LEGIBLE_V1),
-                ChatMessage.system(AiPrompts.todayContext(now, zone())),
+                ChatMessage.system(AiPrompts.todayContext(now, zoneId)),
                 ChatMessage.user(text)
             ),
             temperature = 0.4,
@@ -358,20 +380,55 @@ class AiRepository @Inject constructor(
      * note) but keeps the working note-Extract path untouched. The caller shows the results as
      * confirm cards BEFORE anything is armed (owner's choice: confirm-first).
      */
-    suspend fun extractRambleActions(text: String, noteId: Long?, now: Long): ExtractOutcome {
+    suspend fun extractRambleActions(text: String, noteId: Long?, now: Long): ExtractOutcome =
+        extractRambleActionsWithPrompt(
+            text = text,
+            noteId = noteId,
+            now = now,
+            zoneId = zone(),
+            prompt = AiPrompts.RAMBLE_EXTRACT_V1
+        )
+
+    /** V2 fixes dated-intention classification while retaining V1 verbatim for auditability. */
+    suspend fun extractRambleActionsV2(
+        text: String,
+        noteId: Long?,
+        now: Long,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): ExtractOutcome = extractRambleActionsWithPrompt(
+        text = text,
+        noteId = noteId,
+        now = now,
+        zoneId = zoneId,
+        prompt = AiPrompts.RAMBLE_EXTRACT_V2
+    )
+
+    private suspend fun extractRambleActionsWithPrompt(
+        text: String,
+        noteId: Long?,
+        now: Long,
+        zoneId: ZoneId,
+        prompt: String
+    ): ExtractOutcome {
         val key = requireKey()
         val model = prefs.textModel.first()
         val context = contextLengthFor(model)
         val truncated = truncateForExtract(text, context)
         val wasTruncated = truncated.length < text.length
 
-        val first = runRambleExtract(key, model, truncated, noteId, now)
-        var outcome = rambleExtractionParser.parse(first, now, zone())
+        val first = runRambleExtract(key, model, truncated, noteId, now, zoneId, prompt)
+        var outcome = rambleExtractionParser.parse(first, now, zoneId)
         if (outcome is ExtractOutcome.ParseFailure) {
             val retry = runRambleExtract(
-                key, model, truncated + "\n\nReturn ONLY the JSON object, nothing else.", noteId, now
+                key = key,
+                model = model,
+                text = truncated + "\n\nReturn ONLY the JSON object, nothing else.",
+                noteId = noteId,
+                now = now,
+                zoneId = zoneId,
+                prompt = prompt
             )
-            outcome = rambleExtractionParser.parse(retry, now, zone())
+            outcome = rambleExtractionParser.parse(retry, now, zoneId)
         }
         return if (wasTruncated && outcome is ExtractOutcome.Success) {
             outcome.copy(warnings = listOf("Ramble was long — action extraction ran on a truncated copy.") + outcome.warnings)
@@ -379,13 +436,19 @@ class AiRepository @Inject constructor(
     }
 
     private suspend fun runRambleExtract(
-        key: String, model: String, text: String, noteId: Long?, now: Long
+        key: String,
+        model: String,
+        text: String,
+        noteId: Long?,
+        now: Long,
+        zoneId: ZoneId,
+        prompt: String
     ): String {
         val req = ChatRequest(
             model = model,
             messages = listOf(
-                ChatMessage.system(AiPrompts.RAMBLE_EXTRACT_V1),
-                ChatMessage.system(AiPrompts.todayContext(now, zone())),
+                ChatMessage.system(prompt),
+                ChatMessage.system(AiPrompts.todayContext(now, zoneId)),
                 ChatMessage.user(text)
             ),
             temperature = 0.0,
@@ -482,7 +545,8 @@ class AiRepository @Inject constructor(
      * Insert an accepted proposal, arming the exact alarm for reminders. Returns a
      * token identifying the inserted row for undo. Delegates to [ActionInserter].
      */
-    suspend fun insertAction(action: ProposedAction): InsertedRow? = inserter.insert(action)
+    suspend fun insertAction(action: ProposedAction, sourceNoteId: Long? = null): InsertedRow? =
+        inserter.insert(action, sourceNoteId)
 
     /** Undo a previously [insertAction]-ed row (batch "Undo all"), cancelling its alarm. */
     suspend fun deleteInserted(row: InsertedRow) = inserter.delete(row)

@@ -6,6 +6,7 @@ import com.fadghost.notesapp.data.db.dao.DiaryDao
 import com.fadghost.notesapp.data.db.entity.DiaryEntry
 import com.fadghost.notesapp.data.prefs.DiaryPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,6 +35,21 @@ data class DiaryUiState(
     val hasAnyEntry: Boolean = false
 )
 
+/** Main-thread registry that debounces each diary date independently. */
+internal class DiarySaveJobs {
+    private val jobs = mutableMapOf<LocalDate, Job>()
+
+    fun launch(date: LocalDate, scope: CoroutineScope, block: suspend () -> Unit): Job {
+        jobs.remove(date)?.cancel()
+        val job = scope.launch { block() }
+        jobs[date] = job
+        job.invokeOnCompletion {
+            if (jobs[date] === job) jobs.remove(date)
+        }
+        return job
+    }
+}
+
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
     private val diaryDao: DiaryDao,
@@ -58,7 +74,7 @@ class DiaryViewModel @Inject constructor(
             build(entries, day)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiaryUiState())
 
-    private var saveJob: Job? = null
+    private val saveJobs = DiarySaveJobs()
 
     private fun build(entries: List<DiaryEntry>, day: LocalDate): DiaryUiState {
         val byDate = entries.associateBy { it.date }
@@ -115,8 +131,7 @@ class DiaryViewModel @Inject constructor(
 
     /** Debounced save while typing (PLAN.md §6 autosave pattern). */
     fun saveEntry(date: LocalDate, body: String, mood: Int?) {
-        saveJob?.cancel()
-        saveJob = viewModelScope.launch {
+        saveJobs.launch(date, viewModelScope) {
             kotlinx.coroutines.delay(SAVE_DEBOUNCE_MS)
             persist(date, body, mood)
         }
@@ -124,8 +139,7 @@ class DiaryViewModel @Inject constructor(
 
     /** Immediate save (mood taps, editor close). */
     fun saveEntryNow(date: LocalDate, body: String, mood: Int?) {
-        saveJob?.cancel()
-        viewModelScope.launch { persist(date, body, mood) }
+        saveJobs.launch(date, viewModelScope) { persist(date, body, mood) }
     }
 
     private suspend fun persist(date: LocalDate, body: String, mood: Int?) {

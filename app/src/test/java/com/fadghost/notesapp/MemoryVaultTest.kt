@@ -6,6 +6,7 @@ import com.fadghost.notesapp.data.memory.MemoryVault
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -107,7 +108,62 @@ class MemoryVaultTest {
 
         // Import into a fresh dir reproduces the same entries.
         val dir2 = tmp.newFolder()
-        MemoryVault.importBytes(dir2, bytes)
+        MemoryVault.importBytes(dir2, bytes, replace = true)
         assertEquals(2, MemoryVault.readAllEntries(dir2).size)
+    }
+
+    @Test
+    fun backupImportMergePreservesUnrelatedEntriesAndRegeneratesIndex() {
+        val dir = tmp.root
+        MemoryVault.writeEntries(dir, listOf(model("existing", "old")))
+        val imported = model("imported", "new")
+        MemoryVault.importBytes(
+            dir,
+            mapOf(
+                "memory/index.md" to "THIS INDEX MUST NOT WIN".toByteArray(),
+                "memory/entries/imported.md" to imported.toMarkdown().toByteArray()
+            ),
+            replace = false
+        )
+
+        assertEquals(listOf("existing", "imported"), MemoryVault.readAllEntries(dir).map { it.slug })
+        val index = MemoryVault.readIndex(dir)
+        assertTrue(index.contains("- existing |"))
+        assertTrue(index.contains("- imported |"))
+        assertTrue(!index.contains("THIS INDEX MUST NOT WIN"))
+    }
+
+    @Test
+    fun backupImportReplaceDropsOldEntriesAndRegeneratesIndex() {
+        val dir = tmp.root
+        MemoryVault.writeEntries(dir, listOf(model("existing", "old")))
+        val imported = model("imported", "new")
+        MemoryVault.importBytes(
+            dir,
+            mapOf("memory/entries/imported.md" to imported.toMarkdown().toByteArray()),
+            replace = true
+        )
+
+        assertEquals(listOf("imported"), MemoryVault.readAllEntries(dir).map { it.slug })
+        assertTrue(MemoryVault.readIndex(dir).contains("- imported |"))
+        assertTrue(!MemoryVault.readIndex(dir).contains("- existing |"))
+    }
+
+    @Test
+    fun backupImportRejectsMalformedPathsAndSlugMismatch() {
+        assertThrows(IllegalArgumentException::class.java) {
+            MemoryVault.importBytes(
+                tmp.root,
+                mapOf("memory/../outside.md" to model("outside").toMarkdown().toByteArray()),
+                replace = true
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MemoryVault.importBytes(
+                tmp.root,
+                mapOf("memory/entries/wrong.md" to model("actual").toMarkdown().toByteArray()),
+                replace = true
+            )
+        }
     }
 }

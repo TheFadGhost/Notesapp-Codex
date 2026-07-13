@@ -17,8 +17,8 @@ android {
         applicationId = "com.fadghost.notesapp"
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "3.0.0"
+        versionCode = 5
+        versionName = "3.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -107,7 +107,7 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
-    // Room + FTS5 (external-content vtable via callback/migration)
+    // Room + FTS4 (FTS5 is intentionally unsupported on some target devices).
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
@@ -128,7 +128,7 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
-    // Debug-only, key-redacted request/response logging for the OpenRouter client.
+    // Debug-only, key-redacted HEADERS logging for the OpenRouter client (never bodies).
     implementation(libs.ktor.client.logging)
 
     // Test

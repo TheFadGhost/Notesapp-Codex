@@ -2,6 +2,8 @@ package com.fadghost.notesapp.data.backup
 
 import android.content.Context
 import android.net.Uri
+import com.fadghost.notesapp.alarm.EventAlarm
+import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.data.memory.MemoryRepository
 import com.fadghost.notesapp.data.repo.NotesRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -20,7 +22,9 @@ import javax.inject.Singleton
 class BackupManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: NotesRepository,
-    private val memoryRepository: MemoryRepository
+    private val memoryRepository: MemoryRepository,
+    private val reminderAlarm: ReminderAlarm,
+    private val eventAlarm: EventAlarm
 ) {
     /** Export every note (attachment files + the memory vault) to the user-picked ZIP [target]. */
     suspend fun export(target: Uri): Int = withContext(Dispatchers.IO) {
@@ -44,6 +48,18 @@ class BackupManager @Inject constructor(
 
     /** Commit a previewed backup with the chosen [mode]. */
     suspend fun restore(preview: BackupPreview, mode: ImportMode) = withContext(Dispatchers.IO) {
-        repository.importBackup(preview.data, mode, preview.attachmentFiles)
+        BackupRestoreGuard.requireIntact(preview)
+        val result = repository.importBackup(preview.data, mode, preview.attachmentFiles)
+        if (mode == ImportMode.REPLACE) {
+            result.replacedReminderIds.forEach(reminderAlarm::cancelReminder)
+            result.replacedEventIds.forEach(eventAlarm::cancelEvent)
+        }
+        // Imported pending rows need alarms immediately; do not wait for a reboot/cold start.
+        reminderAlarm.rescheduleAll()
+        eventAlarm.rescheduleAll()
+        memoryRepository.importFiles(
+            files = preview.memoryFiles,
+            replace = mode == ImportMode.REPLACE
+        )
     }
 }

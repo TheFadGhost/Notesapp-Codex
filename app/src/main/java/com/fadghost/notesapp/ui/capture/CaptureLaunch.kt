@@ -25,6 +25,9 @@ sealed interface CaptureRequest {
     /** Open a blank editor, keyboard up (tile + "New note" shortcut). */
     data object NewNote : CaptureRequest
 
+    /** Open an existing source note from a reminder notification. */
+    data class OpenNote(val noteId: Long) : CaptureRequest
+
     /** Open the capture sheet with voice preselected ("Voice ramble" shortcut). */
     data object Voice : CaptureRequest
 

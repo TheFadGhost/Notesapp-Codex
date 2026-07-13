@@ -28,6 +28,10 @@ class AudioAttachmentRepository @Inject constructor(
 
     fun noteDir(noteId: Long): File = AudioStorage.noteDir(context.filesDir, noteId)
 
+    /** A collision-free directory for one recording session inside a note. */
+    fun recordingDir(noteId: Long, sessionId: String): File =
+        AudioStorage.recordingDir(context.filesDir, noteId, sessionId)
+
     /**
      * Persist an attachment for [noteId] built from [segments] (already written to
      * disk). Returns the new row id. [transcriptStart]/[transcriptEnd] anchor the chip.
@@ -79,17 +83,12 @@ class AudioAttachmentRepository @Inject constructor(
         val orphans = AudioStorage.findOrphans(root, referenced)
             .filter { it.extension.equals("m4a", ignoreCase = true) }
         orphans.forEach { runCatching { it.delete() } }
-        // Tidy up now-empty note dirs.
-        runCatching {
-            root.listFiles()?.forEach { dir ->
-                if (dir.isDirectory && dir.listFiles()?.isEmpty() == true) dir.delete()
-            }
-        }
+        // Tidy the nested `voice_<session>` directories as well as now-empty note dirs.
+        runCatching { AudioStorage.pruneEmptyDirectories(root, deleteRoot = false) }
         return orphans.size
     }
 
     private fun pruneEmptyDir(noteId: Long) {
-        val dir = noteDir(noteId)
-        runCatching { if (dir.listFiles()?.isEmpty() == true) dir.delete() }
+        runCatching { AudioStorage.pruneEmptyDirectories(noteDir(noteId)) }
     }
 }

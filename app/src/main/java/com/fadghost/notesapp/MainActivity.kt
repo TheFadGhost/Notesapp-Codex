@@ -21,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.prefs.ThemeMode
 import com.fadghost.notesapp.data.work.DiaryNudgeWorker
 import com.fadghost.notesapp.ui.MainViewModel
+import com.fadghost.notesapp.notify.EventNotifier
 import com.fadghost.notesapp.notify.ReminderNotifier
 import com.fadghost.notesapp.ui.calendar.CalendarDeepLink
 import com.fadghost.notesapp.ui.capture.CaptureLaunch
@@ -87,8 +88,15 @@ class MainActivity : FragmentActivity() {
             diaryLaunch.requestOpenDiary()
         }
         // Reminder-notification tap → open the item on the Calendar tab (PLAN.md §8).
-        if (intent.getBooleanExtra(ReminderNotifier.EXTRA_OPEN_CALENDAR, false)) {
-            CalendarDeepLink.request(intent.getLongExtra(ReminderNotifier.EXTRA_REMINDER_ID, -1L))
+        val sourceNoteId = intent.getLongExtra(ReminderNotifier.EXTRA_OPEN_NOTE_ID, -1L)
+        val eventId = intent.getLongExtra(EventNotifier.EXTRA_OPEN_CALENDAR_EVENT_ID, -1L)
+        when {
+            sourceNoteId > 0L -> CaptureLaunch.post(CaptureRequest.OpenNote(sourceNoteId))
+            eventId > 0L -> CalendarDeepLink.requestEvent(eventId)
+            intent.getBooleanExtra(ReminderNotifier.EXTRA_OPEN_CALENDAR, false) ->
+                CalendarDeepLink.requestReminder(
+                    intent.getLongExtra(ReminderNotifier.EXTRA_REMINDER_ID, -1L)
+                )
         }
         // Capture paths (PLAN.md §6): tile, shortcuts, share/selected-text.
         handleCaptureIntent(intent)

@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
@@ -83,6 +84,7 @@ fun NotesScreen(
     var menuFor by remember { mutableStateOf<NoteCardUi?>(null) }
     var movingNote by remember { mutableStateOf<NoteCardUi?>(null) }
     var managingTag by remember { mutableStateOf<com.fadghost.notesapp.data.db.entity.Tag?>(null) }
+    var organizeFiltersAnchor by remember { mutableStateOf<Rect?>(null) }
     // Permanent (hard) delete is irreversible — unlike soft-delete it has no Undo, so it
     // must go through an explicit confirm popover (Bug 3).
     var pendingForeverDelete by remember { mutableStateOf<NoteCardUi?>(null) }
@@ -174,10 +176,10 @@ fun NotesScreen(
             Spacer(Modifier.height(12.dp))
             FilterBar(
                 filter = filter,
-                folders = folders,
                 tags = tags,
                 onSelect = viewModel::setFilter,
-                onManageTag = { managingTag = it }
+                onManageTag = { managingTag = it },
+                onOpenOrganize = { organizeFiltersAnchor = it }
             )
             Spacer(Modifier.height(12.dp))
 
@@ -264,6 +266,21 @@ fun NotesScreen(
                 onDelete = { viewModel.deleteTag(tag.id); managingTag = null },
                 onMerge = { target -> viewModel.mergeTag(tag.id, target); managingTag = null },
                 onDismiss = { managingTag = null }
+            )
+        }
+
+        organizeFiltersAnchor?.let { anchor ->
+            OrganizeFilterPanel(
+                anchorBounds = anchor,
+                filter = filter,
+                folders = folders,
+                tags = tags,
+                onSelect = viewModel::setFilter,
+                onManageTag = { tag ->
+                    organizeFiltersAnchor = null
+                    managingTag = tag
+                },
+                onDismiss = { organizeFiltersAnchor = null }
             )
         }
     }
