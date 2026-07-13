@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Notesapp"
+rootProject.name = "Notesapp Codex"
 include(":app")

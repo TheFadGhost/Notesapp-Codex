@@ -1,4 +1,4 @@
-# Notesapp
+# Notesapp Codex
 
 Personal AI-powered notes, diary and calendar for Android — local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
 
@@ -8,7 +8,7 @@ Personal AI-powered notes, diary and calendar for Android — local-first, with 
 ![kotlin](https://img.shields.io/badge/Kotlin-2.1-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
 ![compose](https://img.shields.io/badge/Jetpack%20Compose-custom%20UI-4285f4?style=flat-square&logo=jetpackcompose&logoColor=white)
 
-Notesapp is a single-user Android app I built for myself: notes, a diary and a calendar in one place, with optional AI clean-up and reminder extraction through OpenRouter, voice-to-text capture, and a hand-tuned "Aura" design system instead of stock Material widgets. It's distributed as a sideloaded APK, not through the Play Store.
+Notesapp Codex is the actively developed continuation of Notesapp: a single-user Android app for notes, a diary and a calendar, with optional AI clean-up and reminder extraction through OpenRouter, voice-to-text capture, and a hand-tuned "Aura" design system instead of stock Material widgets. It's distributed as a sideloaded APK, not through the Play Store.
 
 ## Features
 
