@@ -34,18 +34,13 @@ class AiPreferences @Inject constructor(
     val textModel: Flow<String> = context.aiSettingsStore.data.map { it[textModelKey] ?: DEFAULT_TEXT_MODEL }
 
     /**
-     * Selected STT model: the curated trio ([STT_MODELS]), or any custom model id the
-     * user typed in (item 9 — future-proofs against the curated list going stale, which
-     * is exactly what happened to the old `qwen/qwen3-asr-flash-*` default). A stored
-     * value is trusted as-is unless it's blank or matches [LEGACY_DEAD_STT_PREFIXES] —
-     * that narrow list heals installs still holding the specific dead default from
-     * before this fix, without silently discarding a deliberate custom pick. Validity
-     * of a custom id is checked on demand via the Settings "Test" button, not on every
-     * read.
+     * Selected STT model: a recommended, live-discovered, or custom id. Stored values are
+     * trusted unless blank so Settings' explicit Test action, rather than stale app-side
+     * assumptions, determines whether a selected model is currently available.
      */
     val sttModel: Flow<String> = context.aiSettingsStore.data.map { prefs ->
         val stored = prefs[sttModelKey]?.trim()
-        if (stored.isNullOrBlank() || isLegacyDeadSttModel(stored)) DEFAULT_STT_MODEL else stored
+        if (stored.isNullOrBlank()) DEFAULT_STT_MODEL else stored
     }
     val favorites: Flow<Set<String>> = context.aiSettingsStore.data.map { it[favoritesKey] ?: emptySet() }
     val recents: Flow<List<String>> = context.aiSettingsStore.data.map { p ->
@@ -66,10 +61,9 @@ class AiPreferences @Inject constructor(
     }
 
     suspend fun setSttModel(id: String) {
-        // Trust any non-blank id (curated trio, a live-discovered model, or a hand-typed
-        // custom id) — only blank input or the known-dead legacy default falls back.
+        // Trust any non-blank curated, live-discovered, or hand-typed custom id.
         val trimmed = id.trim()
-        val safe = if (trimmed.isBlank() || isLegacyDeadSttModel(trimmed)) DEFAULT_STT_MODEL else trimmed
+        val safe = if (trimmed.isBlank()) DEFAULT_STT_MODEL else trimmed
         context.aiSettingsStore.edit { it[sttModelKey] = safe }
     }
 
@@ -104,6 +98,26 @@ class AiPreferences @Inject constructor(
         /** Cheapest working transcription model (verified live on `/audio/transcriptions`). */
         const val DEFAULT_STT_MODEL = "openai/gpt-4o-mini-transcribe"
 
+        /** Hand-picked text models shown at the top of the Settings picker. */
+        val RECOMMENDED_TEXT_MODELS: List<Pair<String, String>> = listOf(
+            "z-ai/glm-5.2" to "Z.AI: GLM 5.2",
+            "xiaomi/mimo-v2.5" to "Xiaomi: MiMo V2.5",
+            "deepseek/deepseek-v4-pro" to "DeepSeek: DeepSeek V4 Pro",
+            "xiaomi/mimo-v2.5-pro" to "Xiaomi: MiMo V2.5 Pro",
+            "google/gemini-3.1-flash-lite" to "Google: Gemini 3.1 Flash Lite",
+            "openai/gpt-5.6-luna" to "OpenAI: GPT-5.6 Luna",
+            "anthropic/claude-sonnet-5" to "Anthropic: Claude Sonnet 5"
+        )
+
+        /** Hand-picked transcription models shown at the top of the STT picker. */
+        val RECOMMENDED_STT_MODELS: List<Pair<String, String>> = listOf(
+            "openai/whisper-large-v3-turbo" to "OpenAI: Whisper Large V3 Turbo",
+            "openai/whisper-large-v3" to "OpenAI: Whisper Large V3",
+            "qwen/qwen3-asr-flash-2026-02-10" to "Qwen: Qwen3 ASR Flash",
+            "microsoft/mai-transcribe-1.5" to "Microsoft: MAI Transcribe 1.5",
+            "nvidia/parakeet-tdt-0.6b-v3" to "NVIDIA: Parakeet TDT 0.6B V3"
+        )
+
         /**
          * Curated, known-good transcription models with friendly display names (item 9),
          * shown in the STT picker before/alongside a live `/models?output_modalities=
@@ -113,24 +127,13 @@ class AiPreferences @Inject constructor(
          * other transcription-capable id OpenRouter adds later can be used without an app
          * update — see [OpenRouterClient.listTranscriptionModels] for the dynamic source.
          */
-        val CURATED_STT_MODELS: List<Pair<String, String>> = listOf(
-            "openai/gpt-4o-mini-transcribe" to "GPT-4o mini Transcribe",
-            "openai/gpt-4o-transcribe" to "GPT-4o Transcribe",
-            "openai/whisper-1" to "Whisper v1"
-        )
+        val CURATED_STT_MODELS: List<Pair<String, String>> =
+            RECOMMENDED_STT_MODELS + listOf(
+                "openai/gpt-4o-mini-transcribe" to "GPT-4o mini Transcribe",
+                "openai/gpt-4o-transcribe" to "GPT-4o Transcribe",
+                "openai/whisper-1" to "Whisper v1"
+            )
         val STT_MODELS: List<String> = CURATED_STT_MODELS.map { it.first }
-
-        /**
-         * Id prefixes known to have gone dead on OpenRouter in this app's history — the
-         * original `qwen/qwen3-asr-flash-*` dated snapshot PLAN.md picked as the default,
-         * which stopped resolving. Narrow and specific on purpose: this heals existing
-         * installs still holding that one bad value, without discarding any other
-         * deliberate custom pick (validate those with the Settings "Test" button instead).
-         */
-        private val LEGACY_DEAD_STT_PREFIXES = listOf("qwen/qwen3-asr-flash")
-
-        private fun isLegacyDeadSttModel(id: String): Boolean =
-            LEGACY_DEAD_STT_PREFIXES.any { id.startsWith(it) }
 
         private const val MAX_RECENTS = 8
     }

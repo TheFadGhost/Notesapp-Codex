@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fadghost.notesapp.data.ai.AiPreferences
 import com.fadghost.notesapp.data.ai.model.CachedModel
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraGlyph
@@ -213,6 +214,11 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
         busy = busy,
         // STT has no favourites/recents grouping — just the (live) list + custom entry.
         sttMode = sttMode,
+        recommendedModels = (if (sttMode) {
+            AiPreferences.RECOMMENDED_STT_MODELS
+        } else {
+            AiPreferences.RECOMMENDED_TEXT_MODELS
+        }).map { (id, name) -> CachedModel(id = id, name = name) },
         onRefresh = if (sttMode) viewModel::refreshSttModels else viewModel::refreshModels,
         onToggleFavorite = viewModel::toggleFavorite,
         onSelect = { id ->
@@ -285,6 +291,7 @@ private fun ModelPickerSheet(
     recents: List<String>,
     busy: Boolean,
     sttMode: Boolean = false,
+    recommendedModels: List<CachedModel>,
     onRefresh: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onSelect: (String) -> Unit,
@@ -292,6 +299,12 @@ private fun ModelPickerSheet(
 ) {
     val tokens = Aura.tokens
     var freeText by remember(visible) { mutableStateOf("") }
+    // Static recommendations remain visible even before the first refresh. When an id is
+    // present in the live list, its fetched metadata is used in preference to the fallback.
+    val fetchedById = models.associateBy { it.id }
+    val recommendedIds = recommendedModels.mapTo(mutableSetOf()) { it.id }
+    val topModels = recommendedModels.map { model -> fetchedById[model.id] ?: model }
+    val otherModels = models.filterNot { it.id in recommendedIds }
     // Render the picker in a real overlay window (Popup) so it draws above the entire
     // screen with its own scrim. Previously this Box composed inline inside Settings'
     // vertical-scroll Column, where fillMaxSize collapsed and the sheet was laid out
@@ -381,12 +394,25 @@ private fun ModelPickerSheet(
                         Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        if (topModels.isNotEmpty()) {
+                            GroupLabel("Recommended")
+                            topModels.forEach {
+                                ModelItem(
+                                    it,
+                                    it.id == current,
+                                    favorite = favorites.contains(it.id),
+                                    onSelect = onSelect,
+                                    onToggleFavorite = if (sttMode) null else onToggleFavorite
+                                )
+                            }
+                        }
                         if (sttMode) {
-                            // Curated + live list: no favourites/recents grouping, no pin affordance.
-                            models.forEach { ModelItem(it, it.id == current, favorite = false, onSelect = onSelect, onToggleFavorite = null) }
+                            // STT intentionally has no favourites/recents grouping.
+                            GroupLabel(if (otherModels.isEmpty()) "No other transcription models" else "Other transcription models")
+                            otherModels.forEach { ModelItem(it, it.id == current, favorite = false, onSelect = onSelect, onToggleFavorite = null) }
                         } else {
-                            val favModels = models.filter { favorites.contains(it.id) }
-                            val recentModels = recents.mapNotNull { r -> models.firstOrNull { it.id == r } }
+                            val favModels = otherModels.filter { favorites.contains(it.id) }
+                            val recentModels = recents.mapNotNull { r -> otherModels.firstOrNull { it.id == r } }
                             if (favModels.isNotEmpty()) {
                                 GroupLabel("Favourites")
                                 favModels.forEach { ModelItem(it, it.id == current, favorites.contains(it.id), onSelect, onToggleFavorite) }
@@ -395,8 +421,8 @@ private fun ModelPickerSheet(
                                 GroupLabel("Recent")
                                 recentModels.forEach { ModelItem(it, it.id == current, favorites.contains(it.id), onSelect, onToggleFavorite) }
                             }
-                            GroupLabel(if (models.isEmpty()) "No models cached — tap Refresh" else "All models")
-                            models.forEach { ModelItem(it, it.id == current, favorites.contains(it.id), onSelect, onToggleFavorite) }
+                            GroupLabel(if (otherModels.isEmpty()) "No other models cached — tap Refresh" else "All models")
+                            otherModels.forEach { ModelItem(it, it.id == current, favorites.contains(it.id), onSelect, onToggleFavorite) }
                         }
                     }
 

@@ -111,7 +111,7 @@ class AiSettingsViewModel @Inject constructor(
             _busy.value = true
             repo.refreshSttModels().fold(
                 onSuccess = { fetched ->
-                    _sttModels.value = fetched.ifEmpty { curatedSttModels() }
+                    _sttModels.value = mergeWithCuratedSttModels(fetched)
                     _status.value = "Loaded ${fetched.size} transcription models"
                 },
                 onFailure = { _status.value = "✗ ${friendly(it)}" }
@@ -136,6 +136,17 @@ class AiSettingsViewModel @Inject constructor(
 
     private fun curatedSttModels(): List<CachedModel> =
         AiPreferences.CURATED_STT_MODELS.map { (id, name) -> CachedModel(id = id, name = name) }
+
+    /**
+     * Keep the bundled options (including the unchanged default) available after a live
+     * refresh. Where OpenRouter returned the same id, prefer its current name and metadata.
+     */
+    private fun mergeWithCuratedSttModels(live: List<CachedModel>): List<CachedModel> {
+        val liveById = live.associateBy { it.id }
+        val curated = curatedSttModels()
+        return curated.map { model -> liveById[model.id] ?: model } +
+            live.filterNot { model -> curated.any { it.id == model.id } }
+    }
 
     private fun friendly(e: Throwable): String = when (e) {
         is OpenRouterError.InvalidKey -> "Key rejected"
