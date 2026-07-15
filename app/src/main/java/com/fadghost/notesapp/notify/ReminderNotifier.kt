@@ -56,10 +56,17 @@ object ReminderNotifier {
 
     fun notificationId(reminderId: Long): Int = stableId(reminderId)
 
-    fun canNotify(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+    fun canNotify(context: Context): Boolean {
+        val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+        if (!permissionGranted) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        if (!manager.areNotificationsEnabled()) return false
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            manager.getNotificationChannel(NotificationChannels.REMINDERS)?.importance !=
+            NotificationManager.IMPORTANCE_NONE
+    }
 
     private fun requestCode(reminderId: Long, lane: Int): Int =
         (stableId(reminderId) * LANES) + lane

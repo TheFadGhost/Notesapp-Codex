@@ -5,8 +5,8 @@ import java.io.File
 /**
  * On-disk layout + orphan detection for voice attachments (PLAN.md §6 — "orphaned
  * files cleaned when trash purges; storage usage visible in settings"). Files live
- * under `filesDir/attachments/<noteId>/voice_<sessionId>/segment_NNN.m4a`, matching the per-note dir
- * convention [com.fadghost.notesapp.data.repo.NotesRepository] already purges on
+ * under `filesDir/attachments/<noteId>/voice_sessions/<sessionId>/segment_NNN.m4a`,
+ * matching the per-note directory convention that NotesRepository already purges on
  * hard-delete. Every function takes explicit [File] roots so the maths is testable
  * against a JUnit temp dir with no Android context.
  */
@@ -14,33 +14,46 @@ object AudioStorage {
 
     const val DIR = "attachments"
     const val SESSION_DIR = "voice_sessions"
-    private val SAFE_SESSION_ID = Regex("[A-Za-z0-9_-]{1,80}")
+    private val SAFE_SESSION_ID = Regex("[A-Za-z0-9._-]{1,80}")
 
     fun root(filesDir: File): File = File(filesDir, DIR)
 
     fun noteDir(filesDir: File, noteId: Long): File = File(root(filesDir), noteId.toString())
 
     /**
-     * Directory for one recording inside a note. The session component is mandatory:
-     * writing every capture directly into [noteDir] would restart at `segment_000.m4a`
-     * and overwrite an older attachment for the same note.
+     * Resolve either a v4 note-owned recording session or a Codex durable global
+     * session. Both historical APIs used `(File, String)`, so numeric directories
+     * directly beneath `attachments` are treated as note directories.
      */
+    fun sessionDir(baseDir: File, sessionId: String): File {
+        requireSafeSessionId(sessionId)
+        val isNoteDir = baseDir.name.toLongOrNull() != null && baseDir.parentFile?.name == DIR
+        return if (isNoteDir) File(File(baseDir, SESSION_DIR), sessionId)
+        else File(sessionsRoot(baseDir), sessionId)
+    }
+
+    /** Collision-free note-owned directory used by both recording implementations. */
     fun recordingDir(filesDir: File, noteId: Long, sessionId: String): File {
         require(noteId > 0) { "A note recording needs a persisted note id" }
-        requireSafeSessionId(sessionId)
-        return File(noteDir(filesDir, noteId), "voice_$sessionId")
+        return sessionDir(noteDir(filesDir, noteId), sessionId)
     }
 
-    /** Durable session metadata / transient audio root for captures not owned by a Note. */
+    /** Durable Codex ramble metadata/transient-audio root outside note attachments. */
     fun sessionsRoot(filesDir: File): File = File(filesDir, SESSION_DIR)
-
-    fun sessionDir(filesDir: File, sessionId: String): File {
-        requireSafeSessionId(sessionId)
-        return File(sessionsRoot(filesDir), sessionId)
-    }
 
     fun transientAudioDir(filesDir: File, sessionId: String): File =
         File(sessionDir(filesDir, sessionId), "audio")
+
+    fun pruneEmptySessionParents(sessionDir: File) {
+        var current: File? = sessionDir
+        repeat(3) {
+            val dir = current ?: return
+            if (dir.name == DIR || dir.listFiles()?.isNotEmpty() == true) return
+            runCatching { dir.delete() }
+            current = dir.parentFile
+        }
+    }
+
 
     /** Segment file for [index] inside [noteDir], creating parent dirs as needed. */
     fun segmentFile(noteDir: File, index: Int): File {
@@ -72,7 +85,7 @@ object AudioStorage {
     }
 
     /** Remove empty nested session/note directories bottom-up after their audio is deleted. */
-    fun pruneEmptyDirectories(root: File, deleteRoot: Boolean = true): Int {
+    fun pruneEmptyDirectories(root: File, deleteRoot: Boolean = false): Int {
         if (!root.isDirectory) return 0
         var removed = 0
         root.walkBottomUp()

@@ -83,7 +83,9 @@ fun AudioChipOverlay(
         with(density) {
             Box(
                 Modifier.offset(
-                    x = (rect.left - 24.dp.toPx()).coerceAtLeast(0f).toDp(),
+                    // Audio belongs in the editor's reserved right rail rather than on top of
+                    // transcript text. The caller leaves 32dp after the text layout.
+                    x = (layoutResult.size.width.toFloat() + 7.dp.toPx()).toDp(),
                     y = rect.top.toDp()
                 )
             ) {

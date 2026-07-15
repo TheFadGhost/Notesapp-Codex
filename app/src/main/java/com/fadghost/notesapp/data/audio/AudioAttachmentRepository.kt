@@ -65,6 +65,7 @@ class AudioAttachmentRepository @Inject constructor(
         val row = dao.byId(id) ?: return
         row.segments.forEach { runCatching { File(it).delete() } }
         dao.deleteById(id)
+        row.segments.mapNotNull { File(it).parentFile }.distinct().forEach(AudioStorage::pruneEmptySessionParents)
         pruneEmptyDir(row.noteId)
     }
 
@@ -83,12 +84,13 @@ class AudioAttachmentRepository @Inject constructor(
         val orphans = AudioStorage.findOrphans(root, referenced)
             .filter { it.extension.equals("m4a", ignoreCase = true) }
         orphans.forEach { runCatching { it.delete() } }
-        // Tidy the nested `voice_<session>` directories as well as now-empty note dirs.
+        // Tidy both Codex legacy `voice_<session>` and v4 nested session directories,
+        // while retaining the attachment root shared by image/file attachments.
         runCatching { AudioStorage.pruneEmptyDirectories(root, deleteRoot = false) }
         return orphans.size
     }
 
     private fun pruneEmptyDir(noteId: Long) {
-        runCatching { AudioStorage.pruneEmptyDirectories(noteDir(noteId)) }
+        runCatching { AudioStorage.pruneEmptyDirectories(noteDir(noteId), deleteRoot = true) }
     }
 }

@@ -45,7 +45,7 @@ class ActionInserterTest {
         override fun observePending(): Flow<List<Reminder>> = emptyFlow()
         override fun observeAll(): Flow<List<Reminder>> = emptyFlow()
         override suspend fun getById(id: Long): Reminder? = rows[id]
-        override suspend fun allPending(): List<Reminder> = rows.values.filter { !it.done }
+        override suspend fun allPending(): List<Reminder> = rows.values.filter { !it.done && !it.alarmFired }
         override suspend fun allForBackup(): List<Reminder> = rows.values.toList()
         override suspend fun deleteAll() { rows.clear() }
         override suspend fun claimNotification(id: Long, scheduledAt: Long): Int {
@@ -59,6 +59,9 @@ class ActionInserterTest {
             rows[id]?.takeIf { it.lastNotifiedTriggerAt == scheduledAt }?.let {
                 rows[id] = it.copy(lastNotifiedTriggerAt = null)
             }
+        }
+        override suspend fun setAlarmFired(id: Long, fired: Boolean) {
+            rows[id]?.let { rows[id] = it.copy(alarmFired = fired) }
         }
         override suspend fun setDone(id: Long, done: Boolean) {
             rows[id]?.let { rows[id] = it.copy(done = done) }

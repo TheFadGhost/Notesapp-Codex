@@ -293,7 +293,7 @@ private fun TagPill(tag: String) {
             .background(tokens.colors.outline.copy(alpha = 0.5f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
-        BasicText("#$tag", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
+        BasicText(tag, style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
     }
 }
 

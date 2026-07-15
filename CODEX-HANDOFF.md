@@ -1,6 +1,6 @@
 # Notesapp Codex — Complete AI Handoff
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
 
 This document is a self-contained, secret-free handoff for continuing the **Notesapp Codex** Android application. It describes the repository split, implemented work, locked product decisions, important constraints, verification already completed, known caveats, and safe next steps.
 
@@ -14,7 +14,7 @@ This document is a self-contained, secret-free handoff for continuing the **Note
 - Main branch: `main`
 - Android package/application ID remains the existing project package so upgrades and migrations continue to work.
 - Root project name and visible app label are **Notesapp Codex**.
-- Current app version: `versionCode 6`, `versionName 3.2.0`.
+- Current app version: `versionCode 7`, `versionName 3.3.0`.
 
 The original repository locally excludes `/Notesapp Codex/`, so the new repository is independent and cannot accidentally be committed as a nested folder in the original project.
 
@@ -280,13 +280,27 @@ Before either command, confirm that the current directory is the Notesapp Codex 
 
 ## 9. Private signed APK releases
 
-The private repository contains signed `v3.1.0` and `v3.2.0` releases. Every production asset is built locally with:
+The private repository contains signed `v3.1.0`, `v3.2.0`, and `v3.3.0` releases. Every production asset is built locally with:
 
 ```powershell
 .\gradlew.bat assembleRelease --no-daemon
 ```
 
-No unit tests, emulator run, on-device test, or debugging session was performed as part of this release request. Gradle's release assembly, release lint-vital tasks, packaging, and signing validation completed successfully.
+Older release entries below retain their original validation scope. The v3.3.0 release received the broader test and installation matrix recorded in its own entry.
+
+### v3.3.0
+
+- Local build output: `app\build\outputs\apk\release\Notesapp-Codex-v3.3.0.apk`
+- GitHub asset name: `Notesapp-Codex-v3.3.0.apk`
+- Size: 25,220,611 bytes
+- SHA-256: `cee43a4c536393f7a1c55b2d20726e52f40c944b53d2929e4304159efac565e1`
+- Android signature: verified with APK Signature Scheme v3; one RSA-4096 signer, matching the v3.2.0 release certificate
+- Package metadata: `com.fadghost.notesapp`, `versionCode 7`, `versionName 3.3.0`, min SDK 31, target SDK 36
+- Build validation: debug unit tests, debug assembly, Android-test compilation, lint, and signed release assembly passed
+- Migration validation: all 10 API 36 emulator instrumentation tests passed, including migrations from both supported schema-9 layouts
+- Clean-install validation: the signed v3.3.0 APK installed and cold-launched successfully on the API 36 emulator with no crash-buffer entries
+- Upgrade validation: the signed v3.2.0 APK installed and launched, then upgraded normally to the signed v3.3.0 APK without uninstalling or using a downgrade flag; v3.3.0 launched with no `AndroidRuntime` errors
+- Packaging validation: `apksigner` verification and 16 KiB page-alignment verification passed
 
 ### v3.2.0
 
@@ -307,4 +321,4 @@ The signing keystore and its properties remain external to both GitHub repositor
 
 ## 10. Definition of the current handoff state
 
-Notesapp Codex v3.2 code is implemented, isolated in its own repository, documented, published to public and private GitHub repositories, and available as a signed private APK release. The compile-only integration check and signed release assembly passed; no emulator, device, or test suite run was performed for v3.2 by owner instruction. Future work should start from issues the owner finds during manual testing, not by rebuilding the completed v3.2 features.
+Notesapp Codex v3.3 code is implemented, isolated in its own repository, documented, published to public and private GitHub repositories, and available as a signed private APK release. Unit, lint, instrumentation, migration, packaging, clean-install, and signed v3.2-to-v3.3 upgrade checks passed. Future work should start from issues the owner finds during manual testing rather than rebuilding the completed v3.3 features.

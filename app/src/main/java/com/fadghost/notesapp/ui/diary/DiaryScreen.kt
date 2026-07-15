@@ -1,5 +1,6 @@
 package com.fadghost.notesapp.ui.diary
 
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
@@ -41,6 +43,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +85,7 @@ fun DiaryScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val locked by viewModel.locked.collectAsStateWithLifecycle()
+    val cleaningTranscript by viewModel.cleaningTranscript.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.refreshToday() }
 
@@ -94,6 +102,8 @@ fun DiaryScreen(
         onLoadMore = viewModel::loadMore,
         onSaveTodayDebounced = { body, mood -> viewModel.saveEntry(state.today, body, mood) },
         onSaveTodayNow = { body, mood -> viewModel.saveEntryNow(state.today, body, mood) },
+        cleaningTranscript = cleaningTranscript,
+        onCleanTranscript = viewModel::cleanTranscript,
         onOpenDay = { openDay = it },
         voiceViewModel = voiceViewModel
     )
@@ -115,6 +125,8 @@ private fun DiaryContent(
     onLoadMore: () -> Unit,
     onSaveTodayDebounced: (String, Int?) -> Unit,
     onSaveTodayNow: (String, Int?) -> Unit,
+    cleaningTranscript: Boolean,
+    onCleanTranscript: (String, (Result<String>) -> Unit) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
     voiceViewModel: DiaryVoiceViewModel
 ) {
@@ -148,6 +160,7 @@ private fun DiaryContent(
     // background re-emissions (after autosave) never clobber in-progress typing.
     var todayBody by remember { mutableStateOf(TextFieldValue("")) }
     var todayMood by remember { mutableStateOf<Mood?>(null) }
+    var todayInsertion by remember { mutableStateOf<TranscriptInsertion?>(null) }
     var seededDate by remember { mutableStateOf<LocalDate?>(null) }
     LaunchedEffect(state.loaded, state.today) {
         if (state.loaded && seededDate != state.today) {
@@ -157,7 +170,6 @@ private fun DiaryContent(
             seededDate = state.today
         }
     }
-
     val visibleTimeline = state.timeline.take(visibleCount)
     var voiceVisible by remember(state.today) { mutableStateOf(false) }
 
@@ -227,8 +239,12 @@ private fun DiaryContent(
                         todayBody = next
                         onSaveTodayDebounced(next.text, todayMood?.score)
                     },
-                    bodyFocus = todayFocus,
-                    onVoice = { voiceVisible = true }
+                    cleaningTranscript = cleaningTranscript,
+                    onCleanTranscript = onCleanTranscript,
+                    onVoice = { voiceVisible = true },
+                    transcriptInsertion = todayInsertion,
+                    onTranscriptCleaned = { todayInsertion = null },
+                    bodyFocus = todayFocus
                 )
             }
 
@@ -264,8 +280,9 @@ private fun DiaryContent(
             date = state.today,
             viewModel = voiceViewModel,
             onInsert = { transcript ->
-                val next = insertTranscriptAtSelection(todayBody, transcript)
+                val (next, insertion) = trackedTranscriptInsertion(todayBody, transcript)
                 todayBody = next
+                todayInsertion = insertion
                 onSaveTodayNow(next.text, todayMood?.score)
             },
             onDismiss = { voiceVisible = false }
@@ -284,10 +301,18 @@ private fun TodayCard(
     onMoodChange: (Mood?) -> Unit,
     prompts: List<PromptTemplate>,
     onPrompt: (String) -> Unit,
-    bodyFocus: FocusRequester? = null,
-    onVoice: () -> Unit
+    cleaningTranscript: Boolean,
+    onCleanTranscript: (String, (Result<String>) -> Unit) -> Unit,
+    onVoice: () -> Unit,
+    transcriptInsertion: TranscriptInsertion?,
+    onTranscriptCleaned: () -> Unit,
+    bodyFocus: FocusRequester? = null
 ) {
     val tokens = Aura.tokens
+    val latestBody by rememberUpdatedState(body)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var cleanupMessage by remember { mutableStateOf<String?>(null) }
     Column(
         Modifier
             .fillMaxWidth()
@@ -303,12 +328,37 @@ private fun TodayCard(
                 Spacer(Modifier.height(2.dp))
                 BasicText(date.format(TODAY_FMT), style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
             }
+            DiaryIconButton(com.fadghost.notesapp.ui.components.Glyph.SHARE, "Share diary as PDF") {
+                scope.launch { com.fadghost.notesapp.ui.share.DocumentShare.sharePdf(context, date.format(TODAY_FMT), body.text) }
+            }
             DiaryVoiceEntryButton(onClick = onVoice)
         }
         Spacer(Modifier.height(14.dp))
         MoodPicker(selected = mood, onSelect = onMoodChange)
         Spacer(Modifier.height(14.dp))
         DiaryBodyField(body = body, onBodyChange = onBodyChange, placeholder = "Write about your day…", focusRequester = bodyFocus)
+
+        transcriptInsertion?.let { pending ->
+            Spacer(Modifier.height(10.dp))
+            PromptChip(label = if (cleaningTranscript) "Cleaning…" else "Make it clean") {
+                if (!cleaningTranscript) onCleanTranscript(pending.raw) { result ->
+                    result.getOrNull()?.let { cleaned ->
+                        val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
+                        if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
+                        else {
+                            val caret = (pending.start + cleaned.trim().length).coerceAtMost(next.length)
+                            onBodyChange(TextFieldValue(next, TextRange(caret)))
+                            onTranscriptCleaned()
+                            cleanupMessage = null
+                        }
+                    }
+                }
+            }
+        }
+        cleanupMessage?.let {
+            Spacer(Modifier.height(6.dp))
+            BasicText(it, style = AuraType.labelSm.copy(color = tokens.colors.danger))
+        }
 
         if (body.text.isBlank() && prompts.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
@@ -374,6 +424,27 @@ private fun PromptChip(label: String, onClick: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         BasicText(label, style = AuraType.label.copy(color = tokens.colors.accent))
+    }
+}
+
+@Composable
+private fun DiaryIconButton(
+    glyph: com.fadghost.notesapp.ui.components.Glyph,
+    description: String,
+    onClick: () -> Unit
+) {
+    val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(tokens.radii.pill))
+            .auraPress(interaction, tint = true)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .semantics { contentDescription = description; role = Role.Button },
+        contentAlignment = Alignment.Center
+    ) {
+        com.fadghost.notesapp.ui.components.AuraGlyph(glyph, tokens.colors.accent, Modifier.size(20.dp))
     }
 }
 
@@ -546,10 +617,16 @@ private fun DiaryDayEditor(
     onClose: () -> Unit
 ) {
     val tokens = Aura.tokens
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val cleaning by viewModel.cleaningTranscript.collectAsStateWithLifecycle()
     var body by remember(date) { mutableStateOf(TextFieldValue("")) }
     var mood by remember(date) { mutableStateOf<Mood?>(null) }
     var loaded by remember(date) { mutableStateOf(false) }
     var voiceVisible by remember(date) { mutableStateOf(false) }
+    var insertion by remember(date) { mutableStateOf<TranscriptInsertion?>(null) }
+    var cleanupMessage by remember(date) { mutableStateOf<String?>(null) }
+    val latestBody by rememberUpdatedState(body)
 
     LaunchedEffect(date) {
         val entry = viewModel.entryFor(date)
@@ -558,7 +635,6 @@ private fun DiaryDayEditor(
         mood = Mood.fromScore(entry?.mood)
         loaded = true
     }
-
     fun persist() {
         if (loaded) viewModel.saveEntryNow(date, body.text, mood?.score)
     }
@@ -583,6 +659,9 @@ private fun DiaryDayEditor(
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 BackPill(onClick = { persist(); onClose() })
                 Spacer(Modifier.weight(1f))
+                DiaryIconButton(com.fadghost.notesapp.ui.components.Glyph.SHARE, "Share diary as PDF") {
+                    scope.launch { com.fadghost.notesapp.ui.share.DocumentShare.sharePdf(context, date.format(CARD_FMT), body.text) }
+                }
                 DiaryVoiceEntryButton(onClick = { voiceVisible = true })
             }
             Spacer(Modifier.height(8.dp))
@@ -600,14 +679,36 @@ private fun DiaryDayEditor(
                 placeholder = "Write about this day…",
                 minHeight = 240.dp
             )
+            insertion?.let { pending ->
+                Spacer(Modifier.height(10.dp))
+                PromptChip(if (cleaning) "Cleaning…" else "Make it clean") {
+                    if (!cleaning) viewModel.cleanTranscript(pending.raw) { result ->
+                        result.getOrNull()?.let { cleaned ->
+                            val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
+                            if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
+                            else {
+                                body = TextFieldValue(next, TextRange((pending.start + cleaned.trim().length).coerceAtMost(next.length)))
+                                viewModel.saveEntryNow(date, next, mood?.score)
+                                insertion = null
+                                cleanupMessage = null
+                            }
+                        }
+                    }
+                }
+            }
+            cleanupMessage?.let {
+                Spacer(Modifier.height(6.dp))
+                BasicText(it, style = AuraType.labelSm.copy(color = tokens.colors.danger))
+            }
         }
         DiaryVoiceCaptureSheet(
             visible = voiceVisible,
             date = date,
             viewModel = voiceViewModel,
             onInsert = { transcript ->
-                val next = insertTranscriptAtSelection(body, transcript)
+                val (next, tracked) = trackedTranscriptInsertion(body, transcript)
                 body = next
+                insertion = tracked
                 viewModel.saveEntryNow(date, next.text, mood?.score)
             },
             onDismiss = { voiceVisible = false }
@@ -645,6 +746,23 @@ private fun BackPill(onClick: () -> Unit) {
 
 private val TODAY_FMT = DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())
 private val CARD_FMT = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.getDefault())
+
+/** Keep the exact spoken range so AI cleanup never replaces surrounding diary text. */
+private fun trackedTranscriptInsertion(
+    current: TextFieldValue,
+    transcript: String
+): Pair<TextFieldValue, TranscriptInsertion?> {
+    val raw = transcript.trim()
+    val next = insertTranscriptAtSelection(current, raw)
+    if (raw.isEmpty()) return next to null
+
+    val selectionStart = minOf(current.selection.start, current.selection.end)
+        .coerceIn(0, next.text.length)
+    val start = next.text.indexOf(raw, startIndex = selectionStart)
+        .takeIf { it >= 0 }
+        ?: (next.selection.start - raw.length).coerceAtLeast(0)
+    return next to TranscriptInsertion(next.text, start, start + raw.length, raw)
+}
 
 private fun preview(body: String): String =
     Markdown.strip(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(120) ?: ""

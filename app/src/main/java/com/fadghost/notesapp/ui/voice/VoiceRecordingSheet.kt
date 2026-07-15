@@ -8,8 +8,6 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,6 +53,11 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.data.audio.VoiceRecordingSession
+import com.fadghost.notesapp.data.audio.VoiceSessionState
+import com.fadghost.notesapp.ui.overlay.RecordingOverlayLauncher
 import kotlinx.coroutines.launch
 
 /**
@@ -69,6 +72,7 @@ fun VoiceRecordingSheet(
     visible: Boolean,
     targetNoteId: Long,
     appendMode: Boolean,
+    transcriptOnly: Boolean = false,
     onDismiss: () -> Unit,
     onNewNoteReady: (Long) -> Unit = {},
     onTranscriptReady: (String) -> Unit = {},
@@ -79,7 +83,9 @@ fun VoiceRecordingSheet(
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val reduceMotion = LocalReduceMotion.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val session by VoiceRecordingSession.state.collectAsStateWithLifecycle()
 
     val sheetHeightPx = with(density) { 420.dp.toPx() }
     val offsetY = remember { Animatable(sheetHeightPx) }
@@ -88,14 +94,35 @@ fun VoiceRecordingSheet(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) viewModel.startRecording() else viewModel.onPermissionDenied() }
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (RecordingOverlayLauncher.canDraw(context) &&
+            (session is VoiceSessionState.Starting || session is VoiceSessionState.Recording)
+        ) {
+            RecordingOverlayLauncher.show(context)
+        }
+    }
+
+    LaunchedEffect(session) {
+        when (session) {
+            is VoiceSessionState.Starting -> if (RecordingOverlayLauncher.canDraw(context)) {
+                RecordingOverlayLauncher.show(context)
+            }
+            is VoiceSessionState.Recording -> if (RecordingOverlayLauncher.canDraw(context)) {
+                RecordingOverlayLauncher.show(context)
+            }
+            else -> RecordingOverlayLauncher.hide(context)
+        }
+    }
 
     fun hasPermission() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
-    LaunchedEffect(visible, targetNoteId, appendMode) {
+    LaunchedEffect(visible, targetNoteId, appendMode, transcriptOnly) {
         launch { scrimAlpha.animateTo(1f, tween(220)) }
-        offsetY.animateTo(0f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow))
-        viewModel.begin(targetNoteId, appendMode)
+        offsetY.animateTo(0f, MotionTokens.medium(reduceMotion))
+        viewModel.begin(targetNoteId, appendMode, transcriptOnly)
         if (hasPermission()) viewModel.startRecording()
     }
 
@@ -109,7 +136,7 @@ fun VoiceRecordingSheet(
         when (state.phase) {
             VoicePhase.DONE -> {
                 animateOut()
-                if (appendMode) state.transcript?.let { onTranscriptReady(it) }
+                if (appendMode || transcriptOnly) state.transcript?.let { onTranscriptReady(it) }
                 else state.committedNoteId?.let { onNewNoteReady(it) }
                 onDismiss()
             }
@@ -153,12 +180,28 @@ fun VoiceRecordingSheet(
             Box(
                 Modifier
                     .align(Alignment.CenterHorizontally)
-                    .width(40.dp)
-                    .height(5.dp)
+                    .width(36.dp)
+                    .height(4.dp)
                     .clip(CircleShape)
                     .background(tokens.colors.textSecondary.copy(alpha = 0.5f))
             )
             Spacer(Modifier.height(16.dp))
+            if ((state.phase == VoicePhase.STARTING || state.phase == VoicePhase.RECORDING) &&
+                !RecordingOverlayLauncher.canDraw(context)
+            ) {
+                BasicText(
+                    "Enable floating controls",
+                    style = AuraType.label.copy(color = tokens.colors.accent),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(tokens.radii.pill))
+                        .clickable {
+                            overlayPermissionLauncher.launch(RecordingOverlayLauncher.permissionIntent(context))
+                        }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+            }
 
             when (state.phase) {
                 VoicePhase.REQUEST_PERMISSION ->
@@ -176,6 +219,7 @@ fun VoiceRecordingSheet(
                     },
                     onNotNow = { dismiss(true) }
                 )
+                VoicePhase.STARTING -> ProcessingState("Starting recorder…", onCancel = { dismiss(true) })
                 VoicePhase.RECORDING -> RecordingBody(state, viewModel, ::dismiss)
                 VoicePhase.PROCESSING -> ProcessingState(state.progress ?: "Working…", onCancel = viewModel::cancelProcessing)
                 VoicePhase.QUEUED -> QueuedState(onDone = { dismiss(false) })

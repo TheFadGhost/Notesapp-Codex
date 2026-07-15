@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses simple date-tagged releases rather than strict SemVer
 (it's a sideloaded personal app, not a library).
 
+## [v3.3.0] - 2026-07-15 - Deliberate Motion & Reliable Capture
+
+This release tightens the app's interaction model: gestures distinguish intent, recording can
+continue behind other apps with real controls, diary speech can be cleaned without overwriting the
+raw meaning, and calendar reminders are explicit about the permissions they need to fire.
+
+### Added
+- Permission-gated **floating recording controls** over other apps: a compact draggable squircle
+  opens Pause/Resume, Stop, Discard and Open controls. Dragging uses Android touch slop and cannot
+  leak through as a click; position is kept between recordings.
+- Foreground microphone session shared by the recording sheet, notification and floating controls.
+- Diary speech-to-text for today and past entries, followed by an explicit **Make it clean** action
+  that turns the selected transcript into sentences while preserving surrounding diary text.
+- Local **PDF sharing** for notes and diary entries through Android's share sheet.
+- Optional event end times, with a spring toggle and duration-preserving start-time edits.
+- Press-and-hold help labels for icon-only bottom controls; labels disappear on release.
+- Long-press attachment dragging to reposition photo/file chips inside a note.
+
+### Changed
+- The navbar is now clearly translucent instead of overly transparent; its traveling-circle spring
+  is unchanged. Invisible pull zones beside the bar make the capture menu easier to drag open.
+- Buttons, toggles, FABs and entering panels use the shared spring vocabulary and still honor
+  Reduce motion.
+- The editor reserves a right-side rail for voice chips and keeps the active typing area above the
+  keyboard. The attachment source panel is smaller.
+- AI memory tags are explicit semantic topics only; capitalization no longer creates hashtag-like
+  labels, and tag pills no longer display a leading `#`.
+
+### Fixed
+- Exact/inexact alarm scheduling is wired through create, edit, undo, delete, snooze, recurrence,
+  reboot and app-update paths. Missing permissions are shown as actionable setup instead of being
+  silently ignored.
+- Drag attempts on recording controls no longer register as clicks.
+- Calendar create/edit controls no longer clip at the bottom and the sheet can spring in or drag
+  down to dismiss.
+- Note context-menu rows, voice/attachment popovers and the AI menu have corrected hit areas,
+  bounds and entrance motion.
+
 ## [v3.2.0] - 2026-07-13 - Tag-first refinement & floating voice controls
 
 ### Added
@@ -150,6 +188,10 @@ First full release, built in milestones.
 - Checksummed ZIP backup/restore (manual + scheduled)
 - Signing config and CI workflow
 
+[v3.3.0]: https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/tag/v3.3.0
+[v3.2.0]: https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/tag/v3.2.0
+[v3.1.0]: https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/tag/v3.1.0
+[v3.0.0]: https://github.com/TheFadGhost/Notesapp/releases/tag/v3.0.0
 [v2.0.0]: https://github.com/TheFadGhost/Notesapp/releases/tag/v2.0.0
 [v1.0.1]: https://github.com/TheFadGhost/Notesapp/releases/tag/v1.0.1
 [v1.0.0]: https://github.com/TheFadGhost/Notesapp/releases/tag/v1.0.0

@@ -1,6 +1,7 @@
 name: CI
 
-# Builds and tests on every push/PR. Produces an UNSIGNED release APK artifact.
+# Builds and tests on every push/PR. The unsigned CI output is deliberately not uploaded:
+# installable APKs are signed locally and attached only to versioned GitHub Releases.
 # Signing happens locally on the developer machine only (see PLAN.md §13) —
 # the keystore never enters CI or repo secrets.
 on:
@@ -27,9 +28,3 @@ jobs:
 
       - name: Build unsigned release APK
         run: ./gradlew assembleRelease --console=plain
-
-      - name: Upload unsigned APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-unsigned
-          path: app/build/outputs/apk/release/*.apk

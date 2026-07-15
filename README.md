@@ -2,7 +2,7 @@
 
 Personal AI-powered notes, diary and calendar for Android — local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
 
-![version](https://img.shields.io/badge/version-v3.2.0-8a5a44?style=flat-square)
+![version](https://img.shields.io/badge/version-v3.3.0-8a5a44?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Android%2012%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![kotlin](https://img.shields.io/badge/Kotlin-2.1-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
@@ -30,9 +30,9 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 - Transcribe via OpenRouter STT (default `openai/gpt-4o-mini-transcribe`)
 - Folio rewrites each ramble into a note, then shows confirm cards before adding reminders/events
 - Tap-toggle or hold-to-talk recording; durable processing/review survives process death
-- Optional draggable system overlay controls for an active ramble (tap pause/resume; long-press stop), enabled through Android's overlay permission
+- Permission-gated compact draggable overlay with Pause/Resume, Stop, Discard and Open controls
 - Every completed ramble starts with a removable `Rambler` tag; deleting it from a note never affects the note itself
-- Existing-note transcripts still land with a circular audio chip and popover player
+- Existing-note transcripts land with a circular audio chip and popover player, with optional clean-up
 
 **Calendar & reminders**
 - Custom springy month/week/agenda views
@@ -41,6 +41,7 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 - Extracted reminders link back to their source note
 - Natural-language quick-add ("gym tomorrow 7am") parsed locally
 - Battery-killer warnings for reliable delivery
+- Optional event end times and actionable exact-alarm/notification permission checks
 
 **Diary**
 - Day-per-entry with mood, streaks and a heat-map
@@ -57,6 +58,7 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 **Capture fast**
 - Quick-settings tile, app-icon shortcuts, share/selected-text into a note
 - Bottom-right contextual FAB with an anchored capture panel
+- Share notes and diary entries as locally generated PDFs
 
 **Privacy**
 - Everything stored on-device; the only network traffic is your own OpenRouter calls
@@ -75,7 +77,7 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 
 ## Install
 
-1. Download the latest `app-release.apk` from [Releases](../../releases).
+1. On Android 12 or newer, download the signed `Notesapp-Codex-v3.3.0.apk` from the [private Releases page](https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/latest).
 2. Open it on your phone; allow "install unknown apps" for your browser/files app when prompted.
 3. Android may show a Play Protect warning — this is normal for sideloaded apps not distributed through the Play Store; choose "Install anyway".
 4. For optional AI and transcription features, open **Settings → AI** and paste your own [OpenRouter API key](https://openrouter.ai/keys). Notes, diary, calendar, search and local reminders work without a key; there is no bundled key or backend.
@@ -90,6 +92,7 @@ Requires JDK 17 and Android SDK 36.
 ```
 
 Release builds are signed using a `keystore.properties` file kept outside the repo. Point Gradle at it with the `NOTESAPP_KEYSTORE_PROPS` environment variable (see `app/build.gradle.kts`); CI builds are unsigned by design.
+Unsigned CI outputs are validation-only and are never published as installable APK artifacts.
 
 ## Tech stack
 

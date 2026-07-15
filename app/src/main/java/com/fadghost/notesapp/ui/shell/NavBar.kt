@@ -3,17 +3,21 @@ package com.fadghost.notesapp.ui.shell
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,8 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -105,8 +111,11 @@ fun AuraNavBar(
         modifier = modifier
             .height(64.dp)
             .width(pillWidth)
-            .clip(RoundedCornerShape(tokens.radii.pill))
-            .background(tokens.colors.surfaceTranslucent)
+            // A stable 92% opacity keeps the pill translucent but readable over content.
+            .background(
+                tokens.colors.surfaceTranslucent.copy(alpha = 0.92f),
+                RoundedCornerShape(tokens.radii.pill)
+            )
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .padding(horizontal = NavPillHPadding),
         contentAlignment = Alignment.CenterStart
@@ -152,30 +161,75 @@ private fun TabItem(
     onClick: () -> Unit
 ) {
     val tokens = Aura.tokens
+    val reduceMotion = LocalReduceMotion.current
+    val haptics = rememberAuraHaptics()
     // Selected glyph tints to accent (V2-SPEC item 1); crossfade, no per-frame relayout.
     val iconColor by animateColorAsState(
         if (selected) tokens.colors.accent else tokens.colors.textSecondary,
+        MotionTokens.fast(reduceMotion),
         label = "navIconColor"
     )
     val interaction = remembered()
+    var showHelp by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .width(slotWidth)
             .fillMaxHeight()
-            .clip(RoundedCornerShape(tokens.radii.pill))
-            .auraPress(interaction)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            )
             .semantics {
                 this.selected = selected
                 contentDescription = tab.label
+                onClick(label = "Open ${tab.label}") { onClick(); true }
             },
         contentAlignment = Alignment.Center
     ) {
-        TabGlyph(icon = tab.icon, color = iconColor, modifier = Modifier.size(24.dp))
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(interaction)
+                .pointerInput(tab) {
+                    detectTapGestures(
+                        onPress = { position ->
+                            val press = PressInteraction.Press(position)
+                            interaction.emit(press)
+                            val released = tryAwaitRelease()
+                            showHelp = false
+                            interaction.emit(
+                                if (released) PressInteraction.Release(press)
+                                else PressInteraction.Cancel(press)
+                            )
+                        },
+                        onLongPress = {
+                            showHelp = true
+                            haptics.tick()
+                        },
+                        // A completed long press suppresses onTap, so release never
+                        // navigates while the help tooltip is being shown.
+                        onTap = { onClick() }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            TabGlyph(icon = tab.icon, color = iconColor, modifier = Modifier.size(24.dp))
+        }
+
+        if (showHelp) {
+            BasicText(
+                text = tab.label,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-38).dp)
+                    .background(
+                        tokens.colors.surface.copy(alpha = 0.98f),
+                        RoundedCornerShape(tokens.radii.sm)
+                    )
+                    .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                style = com.fadghost.notesapp.ui.theme.AuraType.label.copy(
+                    color = tokens.colors.textPrimary
+                )
+            )
+        }
     }
 }
 

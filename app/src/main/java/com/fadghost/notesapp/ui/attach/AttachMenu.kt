@@ -77,7 +77,7 @@ fun AttachMenu(
                     Modifier
                         .statusBarsPadding()
                         .padding(top = 64.dp)
-                        .widthIn(min = 240.dp)
+                        .widthIn(min = 200.dp, max = 224.dp)
                         .clip(RoundedCornerShape(tokens.radii.lg))
                         .background(tokens.colors.surface)
                         .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.lg))

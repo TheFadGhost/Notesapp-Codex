@@ -93,7 +93,8 @@ data class Event(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val startAt: Long,
-    val endAt: Long,
+    /** Null when the event has no explicit end time. */
+    val endAt: Long? = null,
     /** IANA timezone id (DST-safe scheduling, PLAN.md §8). */
     val timezone: String,
     val notes: String? = null,
@@ -123,6 +124,8 @@ data class Reminder(
     val timezone: String,
     val done: Boolean = false,
     val snoozedUntil: Long? = null,
+    /** True once a one-shot alarm has posted, preventing reboot/cold-start re-fires. */
+    val alarmFired: Boolean = false,
     /** Simple v1 repeat (PLAN.md §8: none/daily/weekly/monthly). Added in schema v4 (M3). */
     val recurrence: Recurrence = Recurrence.NONE,
     /** Note that produced this reminder (AI/ramble extraction); hard delete clears the link. */

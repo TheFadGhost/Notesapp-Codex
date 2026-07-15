@@ -1,5 +1,16 @@
 # What's new
 
+## v3.3.0 — Deliberate motion and reliable capture
+- A compact draggable recording squircle can stay above other apps. Tap for Pause, Stop, Discard and Open; dragging never counts as a click.
+- Diary voice capture now offers Make it clean, turning a ramble into proper sentences without silently replacing the raw transcript.
+- Calendar alarms explain and request the Android permissions they need, survive reboot/update, and no longer repeat delivered one-shot reminders.
+- Event end times are optional, with a spring toggle and sensible one-hour default.
+- Notes and diary entries can be shared as locally generated PDFs.
+- Audio controls live in a right-side editor rail, away from your text, and typing stays visible above the keyboard.
+- Hold icon-only controls to see their labels; release to dismiss. Attachment chips can be held and dragged to a new place.
+- The navbar is more readable, menu pulls are easier to catch, and shared spring motion now covers buttons, panels and toggles while respecting Reduce motion.
+- Capitalized words no longer become AI hashtag labels.
+
 ## v2.0.0 — The big redesign
 - A brand-new traveling-bubble nav: one glowing pill slides between tabs with a springy trampoline settle.
 - A bottom-right contextual FAB with an anchored capture panel — New note, diary, voice ramble and quick reminder, each with its own icon.

@@ -3,4 +3,5 @@
     <!-- Attachment files live under filesDir/attachments/ (M-A). Shared read-only via
          the system share sheet using a content:// uri, never a raw file path. -->
     <files-path name="attachments" path="attachments/" />
+    <cache-path name="pdf_exports" path="exports/" />
 </paths>

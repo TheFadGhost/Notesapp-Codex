@@ -337,7 +337,8 @@ object BackupSerializer {
             require(event.id > 0L && eventIds.add(event.id)) {
                 "Backup contains duplicate or invalid event ids"
             }
-            require(event.endAt >= event.startAt) { "Event ends before it starts" }
+            val endAt = event.endAt
+            require(endAt == null || endAt >= event.startAt) { "Event ends before it starts" }
             require(runCatching { ZoneId.of(event.timezone) }.isSuccess) { "Event has an invalid timezone" }
             require(event.recurrence in recurrenceNames) { "Event has an invalid recurrence" }
             require(event.notificationLeadMinutes == null || event.notificationLeadMinutes in 0..10_080) {

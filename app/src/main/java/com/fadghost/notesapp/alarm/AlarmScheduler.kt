@@ -43,16 +43,21 @@ class AlarmScheduler @Inject constructor(
             cancelReminder(reminder.id)
             return
         }
+        val request = AlarmSchedulingPolicy.request(reminder, canExact())
+        if (request == null) {
+            cancelReminder(reminder.id)
+            return
+        }
         val pi = pendingIntent(reminder.id, at, create = true) ?: return
         try {
-            if (canExact()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            if (request.precision == AlarmPrecision.EXACT) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, request.atMillis, pi)
             } else {
                 // Best-effort fallback: still fires, just not guaranteed to the second.
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, request.atMillis, pi)
             }
         } catch (_: SecurityException) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, request.atMillis, pi)
         }
     }
 

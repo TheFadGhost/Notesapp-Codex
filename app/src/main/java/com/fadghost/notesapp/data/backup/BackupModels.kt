@@ -44,7 +44,7 @@ data class BackupEvent(
     val id: Long,
     val title: String,
     val startAt: Long,
-    val endAt: Long,
+    val endAt: Long? = null,
     val timezone: String,
     val notes: String? = null,
     val recurrence: String = "NONE",
@@ -60,6 +60,7 @@ data class BackupReminder(
     val timezone: String,
     val done: Boolean = false,
     val snoozedUntil: Long? = null,
+    val alarmFired: Boolean = false,
     val recurrence: String = "NONE",
     /** Old backup note id; remapped to the restored note id on import. */
     val sourceNoteId: Long? = null,

@@ -19,6 +19,11 @@ sealed interface VoiceProgress {
     data object Done : VoiceProgress
 }
 
+class PartialVoiceTranscriptionException(
+    val completedSegments: Int,
+    cause: Throwable
+) : Exception("Transcription failed after $completedSegments completed segment(s).", cause)
+
 /**
  * Runs the STT pipeline for a set of recorded segments (PLAN.md §5): each segment is
  * uploaded to `/audio/transcriptions` sequentially with the configured STT model, the
@@ -55,7 +60,12 @@ class VoiceTranscriber @Inject constructor(
         segments.forEachIndexed { i, file ->
             onProgress(VoiceProgress.Uploading(i + 1, total))
             onProgress(VoiceProgress.Transcribing(i + 1, total))
-            val res = client.transcribe(key, file, model, language = "en")
+            val res = try {
+                client.transcribe(key, file, model, language = "en")
+            } catch (error: Throwable) {
+                if (i > 0) throw PartialVoiceTranscriptionException(i, error)
+                throw error
+            }
             recordCost(res.usage, model, noteId)
             texts += res.text
         }

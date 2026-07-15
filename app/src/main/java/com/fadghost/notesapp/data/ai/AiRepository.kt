@@ -220,6 +220,18 @@ class AiRepository @Inject constructor(
         return reduce.content
     }
 
+    /** Explicit diary action: raw transcript remains untouched until the user chooses cleanup. */
+    suspend fun cleanDiaryTranscript(text: String): String {
+        val key = requireKey()
+        val model = prefs.textModel.first()
+        val res = client.complete(
+            key,
+            chatRequest(model, AiPrompts.DIARY_TRANSCRIPT_CLEAN_V1, text)
+        )
+        recordCost(res.usage, model, FEATURE_REWRITE, null)
+        return res.content.trim()
+    }
+
     // --- Extract (non-streaming structured output) ------------------------------
 
     /**
@@ -491,7 +503,7 @@ class AiRepository @Inject constructor(
         val req = ChatRequest(
             model = model,
             messages = listOf(
-                ChatMessage.system(AiPrompts.MEMORY_EXTRACT_V1),
+                ChatMessage.system(AiPrompts.MEMORY_EXTRACT_V2),
                 ChatMessage.user(user)
             ),
             temperature = 0.1,

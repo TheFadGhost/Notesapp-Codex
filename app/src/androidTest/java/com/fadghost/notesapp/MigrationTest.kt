@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.fadghost.notesapp.data.db.MIGRATION_6_7
 import com.fadghost.notesapp.data.db.MIGRATION_7_8
 import com.fadghost.notesapp.data.db.MIGRATION_8_9
+import com.fadghost.notesapp.data.db.MIGRATION_9_10
 import com.fadghost.notesapp.data.db.MemoryFts
 import com.fadghost.notesapp.data.db.NOTES_MIGRATIONS
 import com.fadghost.notesapp.data.db.NotesDatabase
@@ -190,8 +191,85 @@ class MigrationTest {
     }
 
     @Test
+    fun migrateCodexV32Schema9To10_preservesLeadStateAndProvenance() {
+        val dbName = "migration-codex-9-10-notes.db"
+        helper.createDatabase(dbName, 9).use { db ->
+            db.execSQL(
+                "INSERT INTO Note (id, title, body, createdAt, updatedAt, pinned, archived, deletedAt, folderId) " +
+                    "VALUES (9, 'Source note', 'Call the dentist', 100, 200, 0, 0, NULL, NULL)"
+            )
+            db.execSQL(
+                "INSERT INTO Event VALUES (5, 'Dentist', 2000000, 2060000, 'Europe/London', NULL, 'NONE', 30, 2000000)"
+            )
+            db.execSQL(
+                "INSERT INTO Reminder VALUES (6, 'Call dentist', 1900000, 'Europe/London', 0, NULL, 'NONE', 9, 1900000)"
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(dbName, 10, true, MIGRATION_9_10)
+        db.query("SELECT endAt, notificationLeadMinutes, lastNotifiedOccurrenceAt FROM Event WHERE id = 5").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(2_060_000L, cursor.getLong(0))
+            assertEquals(30, cursor.getInt(1))
+            assertEquals(2_000_000L, cursor.getLong(2))
+        }
+        db.query("SELECT alarmFired, sourceNoteId, lastNotifiedTriggerAt FROM Reminder WHERE id = 6").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+            assertEquals(9L, cursor.getLong(1))
+            assertEquals(1_900_000L, cursor.getLong(2))
+        }
+        db.close()
+    }
+
+    @Test
+    fun migratePublicV4Schema9To10_preservesOptionalEndAndAlarmState() {
+        val dbName = "migration-public-9-10-notes.db"
+        helper.createDatabase(dbName, 9).use { db ->
+            db.execSQL("DROP TABLE Event")
+            db.execSQL(
+                "CREATE TABLE Event (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER, " +
+                    "`timezone` TEXT NOT NULL, `notes` TEXT, `recurrence` TEXT NOT NULL)"
+            )
+            db.execSQL("CREATE INDEX index_Event_startAt ON Event (startAt)")
+
+            db.execSQL("DROP TABLE Reminder")
+            db.execSQL(
+                "CREATE TABLE Reminder (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `timezone` TEXT NOT NULL, " +
+                    "`done` INTEGER NOT NULL, `snoozedUntil` INTEGER, `alarmFired` INTEGER NOT NULL, " +
+                    "`recurrence` TEXT NOT NULL)"
+            )
+            db.execSQL("CREATE INDEX index_Reminder_triggerAt ON Reminder (triggerAt)")
+            db.execSQL("CREATE INDEX index_Reminder_done ON Reminder (done)")
+            db.execSQL(
+                "INSERT INTO Event VALUES (5, 'Open ended', 2000000, NULL, 'Europe/London', NULL, 'NONE')"
+            )
+            db.execSQL(
+                "INSERT INTO Reminder VALUES (6, 'Already fired', 1900000, 'Europe/London', 0, NULL, 1, 'NONE')"
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(dbName, 10, true, MIGRATION_9_10)
+        db.query("SELECT endAt, notificationLeadMinutes, lastNotifiedOccurrenceAt FROM Event WHERE id = 5").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertTrue(cursor.isNull(0))
+            assertTrue(cursor.isNull(1))
+            assertTrue(cursor.isNull(2))
+        }
+        db.query("SELECT alarmFired, sourceNoteId, lastNotifiedTriggerAt FROM Reminder WHERE id = 6").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+            assertTrue(cursor.isNull(1))
+            assertTrue(cursor.isNull(2))
+        }
+        db.close()
+    }
+
+    @Test
     fun productionMigrationSet_opensRealV8Database_andRetainsRawFts4Tables() {
-        val dbName = "runtime-open-8-9-notes.db"
+        val dbName = "runtime-open-8-10-notes.db"
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase(dbName)
         helper.createDatabase(dbName, 8).use { db ->
@@ -220,7 +298,7 @@ class MigrationTest {
             val db = room.openHelper.writableDatabase
             db.query("PRAGMA user_version").use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(9, cursor.getInt(0))
+                assertEquals(10, cursor.getInt(0))
             }
             db.query("SELECT title FROM Note WHERE id = 12").use { cursor ->
                 assertTrue(cursor.moveToFirst())

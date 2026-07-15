@@ -26,7 +26,7 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 if (!ReminderNotifier.canNotify(context)) return@launch
                 val reminder = ep.reminderDao().getById(id) ?: return@launch
-                if (reminder.done) return@launch
+                if (reminder.done || reminder.alarmFired) return@launch
                 val effectiveAt = reminder.snoozedUntil ?: reminder.triggerAt
                 val requestedAt = intent.getLongExtra(EXTRA_SCHEDULED_AT, -1L)
                     .takeIf { it > 0L } ?: effectiveAt
@@ -48,13 +48,17 @@ class AlarmReceiver : BroadcastReceiver() {
                         System.currentTimeMillis()
                     )
                     ep.reminderDao().reschedule(id, next, null)
+                    ep.reminderDao().setAlarmFired(id, false)
                     ep.alarmScheduler().scheduleReminder(
                         reminder.copy(
                             triggerAt = next,
                             snoozedUntil = null,
+                            alarmFired = false,
                             lastNotifiedTriggerAt = requestedAt
                         )
                     )
+                } else {
+                    ep.reminderDao().setAlarmFired(id, true)
                 }
                 completed = true
             } finally {

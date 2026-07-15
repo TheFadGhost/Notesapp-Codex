@@ -1,6 +1,8 @@
 package com.fadghost.notesapp.ui.attach
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -8,9 +10,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -28,6 +37,9 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.editor.MarkdownVisualTransformation
 import com.fadghost.notesapp.ui.theme.Aura
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 /** One rendered attachment chip in transformed (visual) coordinates. */
@@ -52,6 +64,8 @@ class DisplayBody(
 ) {
     /** Source offset -> transformed offset (for positioning source-anchored overlays). */
     fun mapOffset(sourceOffset: Int): Int = forward[sourceOffset.coerceIn(0, forward.size - 1)]
+    fun unmapOffset(transformedOffset: Int): Int = transformed.offsetMapping
+        .transformedToOriginal(transformedOffset.coerceIn(0, transformed.text.length))
 }
 
 /**
@@ -144,11 +158,13 @@ object AttachmentBodyBuilder {
 fun AttachmentChipOverlay(
     chips: List<ChipToken>,
     layout: TextLayoutResult?,
-    onOpen: (Long) -> Unit
+    onOpen: (Long) -> Unit,
+    onMove: (Long, Int) -> Unit = { _, _ -> }
 ) {
     val lay = layout ?: return
     val density = LocalDensity.current
     val tokens = Aura.tokens
+    val reduceMotion = LocalReduceMotion.current
     chips.forEach { chip ->
         val start = runCatching { lay.getBoundingBox(chip.transStart) }.getOrNull() ?: return@forEach
         val endIdx = (chip.transEnd - 1).coerceAtLeast(chip.transStart)
@@ -156,6 +172,14 @@ fun AttachmentChipOverlay(
         val sameLine = abs(start.top - end.top) < 1f
         val glyphColor = if (chip.present) tokens.colors.linkBlue else tokens.colors.danger
         val interaction = remember(chip.id) { MutableInteractionSource() }
+        var dragDelta by remember(chip.id) { mutableStateOf(Offset.Zero) }
+        var dragging by remember(chip.id) { mutableStateOf(false) }
+        var suppressClick by remember(chip.id) { mutableStateOf(false) }
+        val visualX by animateFloatAsState(dragDelta.x, MotionTokens.medium(reduceMotion), label = "attachment drag x")
+        val visualY by animateFloatAsState(dragDelta.y, MotionTokens.medium(reduceMotion), label = "attachment drag y")
+        LaunchedEffect(dragging, suppressClick) {
+            if (!dragging && suppressClick) { delay(180); suppressClick = false }
+        }
         with(density) {
             val widthPx = if (sameLine) (end.right - start.left) else (lay.size.width - start.left)
             val heightDp = (start.bottom - start.top).toDp()
@@ -163,8 +187,36 @@ fun AttachmentChipOverlay(
                 Modifier
                     .offset(x = start.left.toDp(), y = start.top.toDp())
                     .size(width = widthPx.toDp().coerceAtLeast(24.dp), height = heightDp)
+                    .graphicsLayer {
+                        translationX = visualX
+                        translationY = visualY
+                        scaleX = if (dragging) 1.08f else 1f
+                        scaleY = if (dragging) 1.08f else 1f
+                        alpha = if (dragging) 0.82f else 1f
+                    }
                     .auraPress(interaction, tint = true)
-                    .clickable(interactionSource = interaction, indication = null) { onOpen(chip.id) }
+                    .pointerInput(chip.id, lay) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { dragging = true; suppressClick = true; dragDelta = Offset.Zero },
+                            onDragCancel = { dragging = false; dragDelta = Offset.Zero },
+                            onDragEnd = {
+                                val point = Offset(
+                                    start.left + widthPx / 2f + dragDelta.x,
+                                    start.top + (start.bottom - start.top) / 2f + dragDelta.y
+                                )
+                                onMove(chip.id, lay.getOffsetForPosition(point))
+                                dragging = false
+                                dragDelta = Offset.Zero
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragDelta += amount
+                            }
+                        )
+                    }
+                    .clickable(interactionSource = interaction, indication = null) {
+                        if (!suppressClick) onOpen(chip.id)
+                    }
                     .semantics { contentDescription = if (chip.present) "Attachment" else "Missing attachment" },
                 contentAlignment = Alignment.CenterStart
             ) {

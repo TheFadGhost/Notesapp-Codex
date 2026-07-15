@@ -44,6 +44,11 @@ object MotionTokens {
     fun <T> mediumFinite(reduceMotion: Boolean): FiniteAnimationSpec<T> =
         if (reduceMotion) snap() else tween(240)
 
+    /** Springy finite transition for bottom sheets and pop-in surfaces. */
+    fun <T> bouncyFinite(reduceMotion: Boolean): FiniteAnimationSpec<T> =
+        if (reduceMotion) snap()
+        else spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+
     // --- v2.0.0 shell motion (see council/motion.md) --------------------------------
 
     /**
@@ -78,6 +83,11 @@ object MotionTokens {
 
     /** Per-item stagger rise inside the capture panel (motion.md §2.7). */
     val PanelItem: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 600f)
+
+    /** Compact rebound for FAB/button press and release; quick without feeling linear. */
+    fun <T> press(reduceMotion: Boolean): AnimationSpec<T> =
+        if (reduceMotion) snap()
+        else spring(dampingRatio = 0.62f, stiffness = 650f)
 
     /** Critically-damped settle for bounds-anchored surfaces (never overshoots). */
     fun <T> settle(reduceMotion: Boolean): AnimationSpec<T> =

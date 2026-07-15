@@ -329,6 +329,7 @@ class NotesRepository @Inject constructor(
                 timezone = reminder.timezone,
                 done = reminder.done,
                 snoozedUntil = reminder.snoozedUntil,
+                alarmFired = reminder.alarmFired,
                 recurrence = reminder.recurrence.name,
                 sourceNoteId = reminder.sourceNoteId?.takeIf { it in exportedIds },
                 lastNotifiedTriggerAt = reminder.lastNotifiedTriggerAt
@@ -453,6 +454,7 @@ class NotesRepository @Inject constructor(
                             timezone = backup.timezone,
                             done = backup.done,
                             snoozedUntil = backup.snoozedUntil,
+                            alarmFired = backup.alarmFired,
                             recurrence = Recurrence.valueOf(backup.recurrence),
                             sourceNoteId = backup.sourceNoteId?.let { noteIdMap[it] },
                             lastNotifiedTriggerAt = backup.lastNotifiedTriggerAt

@@ -70,4 +70,18 @@ class MemoryExtractionTest {
         val outcome = parser.parse("""{"entries":[$items],"skipped_reason":null}""", now, "note:1") as MemoryExtractOutcome.Success
         assertEquals(10, outcome.entries.size)
     }
+
+    @Test
+    fun capitalizedWordsAreNotInferredAsTags() {
+        val raw = """{"entries":[{"op":"create","slug":"meeting","title":"Alice Met NASA In London","type":"fact","tags":[],"links":[],"hook":"Meeting summary","body":"Alice met NASA in London."}],"skipped_reason":null}"""
+        val outcome = parser.parse(raw, now, "note:2") as MemoryExtractOutcome.Success
+        assertTrue(outcome.entries.single().model.tags.isEmpty())
+    }
+
+    @Test
+    fun tagPromptForbidsCapitalizationInferenceAndHashCharacters() {
+        val prompt = com.fadghost.notesapp.data.ai.AiPrompts.MEMORY_EXTRACT_V2
+        assertTrue(prompt.contains("Never derive a tag merely because a word is"))
+        assertTrue(prompt.contains("Do not put # characters"))
+    }
 }

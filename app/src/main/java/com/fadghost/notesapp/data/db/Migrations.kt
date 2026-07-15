@@ -184,7 +184,8 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
  * Reminders retain the note that produced them and the effective trigger/snooze slot that
  * was last posted. Events gain an optional notification lead plus the logical occurrence
  * last posted. All columns are nullable so existing rows keep their old behaviour (event
- * alerts off, no source link, no delivery claimed).
+ * alerts off, no source link, no delivery claimed). This is the released Codex
+ * v3.2 schema history and must not be rewritten.
  */
 val MIGRATION_8_9 = object : Migration(8, 9) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -207,6 +208,73 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+/**
+ * Codex v3.2 and public v4 both used schema version 9 with different calendar
+ * layouts. Normalize either installed shape into the version-10 union.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val eventHasLead = db.hasColumn("Event", "notificationLeadMinutes")
+        val eventHasLastNotified = db.hasColumn("Event", "lastNotifiedOccurrenceAt")
+
+        db.execSQL("DROP TABLE IF EXISTS `Event_new`")
+        db.execSQL(
+            "CREATE TABLE `Event_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`title` TEXT NOT NULL, " +
+                "`startAt` INTEGER NOT NULL, " +
+                "`endAt` INTEGER, " +
+                "`timezone` TEXT NOT NULL, " +
+                "`notes` TEXT, " +
+                "`recurrence` TEXT NOT NULL, " +
+                "`notificationLeadMinutes` INTEGER, " +
+                "`lastNotifiedOccurrenceAt` INTEGER)"
+        )
+        val leadExpression = if (eventHasLead) "`notificationLeadMinutes`" else "NULL"
+        val notifiedExpression = if (eventHasLastNotified) "`lastNotifiedOccurrenceAt`" else "NULL"
+        db.execSQL(
+            "INSERT INTO `Event_new` (`id`, `title`, `startAt`, `endAt`, `timezone`, `notes`, `recurrence`, " +
+                "`notificationLeadMinutes`, `lastNotifiedOccurrenceAt`) " +
+                "SELECT `id`, `title`, `startAt`, `endAt`, `timezone`, `notes`, `recurrence`, " +
+                "$leadExpression, $notifiedExpression FROM `Event`"
+        )
+        db.execSQL("DROP TABLE `Event`")
+        db.execSQL("ALTER TABLE `Event_new` RENAME TO `Event`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_Event_startAt` ON `Event` (`startAt`)")
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_Event_notificationLeadMinutes` " +
+                "ON `Event` (`notificationLeadMinutes`)"
+        )
+
+        if (!db.hasColumn("Reminder", "alarmFired")) {
+            db.execSQL("ALTER TABLE `Reminder` ADD COLUMN `alarmFired` INTEGER NOT NULL DEFAULT 0")
+        }
+        if (!db.hasColumn("Reminder", "sourceNoteId")) {
+            db.execSQL(
+                "ALTER TABLE `Reminder` ADD COLUMN `sourceNoteId` INTEGER " +
+                    "REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL"
+            )
+        }
+        if (!db.hasColumn("Reminder", "lastNotifiedTriggerAt")) {
+            db.execSQL("ALTER TABLE `Reminder` ADD COLUMN `lastNotifiedTriggerAt` INTEGER")
+        }
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_Reminder_sourceNoteId` " +
+                "ON `Reminder` (`sourceNoteId`)"
+        )
+    }
+}
+
+private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean =
+    query("PRAGMA table_info(`$table`)").use { cursor ->
+        val nameIndex = cursor.getColumnIndex("name")
+        var found = false
+        while (!found && cursor.moveToNext()) {
+            found = nameIndex >= 0 && cursor.getString(nameIndex) == column
+        }
+        found
+    }
+
 /** The exact migration set used by production and runtime-open instrumentation tests. */
 val NOTES_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_1_2,
@@ -216,5 +284,6 @@ val NOTES_MIGRATIONS: Array<Migration> = arrayOf(
     MIGRATION_5_6,
     MIGRATION_6_7,
     MIGRATION_7_8,
-    MIGRATION_8_9
+    MIGRATION_8_9,
+    MIGRATION_9_10
 )

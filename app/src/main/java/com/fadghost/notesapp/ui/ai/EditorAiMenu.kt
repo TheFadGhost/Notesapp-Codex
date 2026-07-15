@@ -1,8 +1,6 @@
 package com.fadghost.notesapp.ui.ai
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -42,6 +40,7 @@ import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
 import com.fadghost.notesapp.ui.theme.auraTopHighlight
 
@@ -92,7 +91,11 @@ fun EditorAiMenu(
             AnimatedVisibility(
                 visible = visible,
                 enter = if (reduceMotion) fadeIn()
-                else scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy), transformOrigin = TransformOrigin(0f, 0f)) + fadeIn(),
+                else scaleIn(
+                    animationSpec = MotionTokens.PanelScale,
+                    initialScale = 0.72f,
+                    transformOrigin = TransformOrigin(0f, 0f)
+                ) + fadeIn(),
                 exit = if (reduceMotion) fadeOut() else scaleOut(transformOrigin = TransformOrigin(0f, 0f)) + fadeOut(),
                 modifier = Modifier.offset { offset }
             ) {

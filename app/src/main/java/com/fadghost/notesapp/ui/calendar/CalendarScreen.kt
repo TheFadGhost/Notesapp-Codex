@@ -2,6 +2,7 @@ package com.fadghost.notesapp.ui.calendar
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -44,6 +45,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,7 +116,7 @@ fun CalendarScreen(
 
     fun openNew() {
         val start = selected.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
-        draft = ItemDraft(kind = CalendarKind.EVENT, start = start, end = start + 3_600_000L)
+        draft = ItemDraft(kind = CalendarKind.EVENT, start = start, end = null)
     }
 
     // Shell signals: nav re-tap scrolls to top; the contextual FAB starts a new event.
@@ -139,7 +141,7 @@ fun CalendarScreen(
                     kind = CalendarKind.REMINDER,
                     title = r.title,
                     start = r.triggerAt,
-                    end = r.triggerAt,
+                    end = null,
                     recurrence = r.recurrence
                 )
             }
@@ -207,7 +209,7 @@ fun CalendarScreen(
                     kind = CalendarKind.REMINDER,
                     title = r.title,
                     start = r.triggerAt,
-                    end = r.triggerAt,
+                    end = null,
                     recurrence = r.recurrence
                 )
             }
@@ -243,7 +245,7 @@ fun CalendarScreen(
                 }
             }
             item(key = "banners") {
-                ReminderSetupCard(context)
+                ReminderSetupCard(context, onPermissionsChanged = viewModel::reschedulePending)
             }
             item(key = "quickadd") {
                 QuickAddBar(
@@ -605,38 +607,41 @@ private fun CalendarEmptyState() {
  * appears.
  */
 @Composable
-private fun ReminderSetupCard(context: Context) {
+private fun ReminderSetupCard(context: Context, onPermissionsChanged: () -> Unit) {
     var dismissed by remember { mutableStateOf(false) }
-    var notifGranted by remember { mutableStateOf(hasNotifPermission(context)) }
     var notifAsked by remember { mutableStateOf(false) }
-    var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
-    var exactGranted by remember { mutableStateOf(canScheduleExactAlarms(context)) }
+    var refreshKey by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Settings screens do not return a result. Refresh every condition when the app
-    // resumes so the card disappears immediately after the user grants access.
-    DisposableEffect(lifecycleOwner, context) {
+    // Permission and channel state can change while the OS settings screen covers
+    // the app. Refresh on resume, then re-arm rows that could not notify before.
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                notifGranted = hasNotifPermission(context)
-                ignoringBattery = isIgnoringBatteryOptimizations(context)
-                exactGranted = canScheduleExactAlarms(context)
+                refreshKey++
+                onPermissionsChanged()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val notifGranted = remember(refreshKey) { canPostReminderNotifications(context) }
+    val exactGranted = remember(refreshKey) { canScheduleExactAlarms(context) }
+    val ignoringBattery = remember(refreshKey) { isIgnoringBatteryOptimizations(context) }
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
-        notifGranted = result
         notifAsked = true
+        refreshKey++
+        if (result) onPermissionsChanged()
     }
 
-    val notifSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-    val notifNeeded = notifSupported && !notifGranted
-    val batteryNeeded = !ignoringBattery
+    val runtimeNotifPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val notifNeeded = !notifGranted
     val exactNeeded = !exactGranted
-    if (dismissed || (!notifNeeded && !batteryNeeded && !exactNeeded)) return
+    val batteryNeeded = !ignoringBattery
+    val criticalSetupNeeded = notifNeeded || exactNeeded
+    if ((dismissed && !criticalSetupNeeded) || (!criticalSetupNeeded && !batteryNeeded)) return
 
     val tokens = Aura.tokens
     Column(
@@ -656,7 +661,9 @@ private fun ReminderSetupCard(context: Context) {
                 style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary),
                 modifier = Modifier.weight(1f)
             )
-            BannerAction("Dismiss", subtle = true) { dismissed = true }
+            if (!criticalSetupNeeded) {
+                BannerAction("Dismiss", subtle = true) { dismissed = true }
+            }
         }
         Spacer(Modifier.size(4.dp))
         BasicText(
@@ -667,13 +674,13 @@ private fun ReminderSetupCard(context: Context) {
         if (notifNeeded) {
             Spacer(Modifier.size(14.dp))
             BasicText(
-                if (notifAsked) "Notifications are off. Enable them in Settings so reminders can alert you."
+                if (notifAsked || !runtimeNotifPermission) "Notifications are off. Enable them in Settings so reminders can alert you."
                 else "Reminders need notification access to alert you at the right time.",
                 style = AuraType.label.copy(color = tokens.colors.textSecondary)
             )
             Spacer(Modifier.size(8.dp))
-            BannerAction(if (notifAsked) "Open notification settings" else "Enable notifications") {
-                if (notifAsked) openAppNotificationSettings(context)
+            BannerAction(if (notifAsked || !runtimeNotifPermission) "Open notification settings" else "Enable notifications") {
+                if (notifAsked || !runtimeNotifPermission) openAppNotificationSettings(context)
                 else launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
@@ -735,10 +742,17 @@ private fun dayLabel(day: LocalDate, today: LocalDate): String = when (day) {
     else -> day.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))
 }
 
-private fun hasNotifPermission(context: Context): Boolean =
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+private fun canPostReminderNotifications(context: Context): Boolean {
+    val runtimeGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
         android.content.pm.PackageManager.PERMISSION_GRANTED
+    if (!runtimeGranted) return false
+    val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+    if (!manager.areNotificationsEnabled()) return false
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+        manager.getNotificationChannel(com.fadghost.notesapp.notify.NotificationChannels.REMINDERS)?.importance !=
+        NotificationManager.IMPORTANCE_NONE
+}
 
 private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
     val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true

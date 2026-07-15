@@ -62,6 +62,28 @@ STRICT RULES — follow every one, identically every time:
 9. Write bodies in the language of the note. Keys/slugs/types in English."""
 
     /**
+     * V2 makes tag provenance explicit. Capitalisation is typography, not semantic metadata;
+     * a tag must be an intentional concept emitted in the structured tags field.
+     */
+    val MEMORY_EXTRACT_V2 = MEMORY_EXTRACT_V1 + """
+
+10. tags: max 5 lowercase semantic topic words. Never derive a tag merely because a word is
+    capitalized, starts a sentence, is a heading, or is a person's name. Do not put # characters
+    in tags. Use an empty tags list when the note has no useful retrieval topic."""
+
+    /** Versioned diary transcript cleanup; used only after the user chooses Make it clean. */
+    const val DIARY_TRANSCRIPT_CLEAN_V1 = """You carefully clean a spoken diary transcript.
+
+STRICT RULES:
+1. Preserve every fact, feeling, name, date, number, uncertainty, and intention. Never add advice,
+   interpretation, sentiment, or events that were not spoken.
+2. Remove filler words, repeated fragments, false starts, and transcription stumbles.
+3. Turn the ramble into natural, properly punctuated sentences and short paragraphs. Use bullets
+   only when the speaker clearly listed things.
+4. Keep the speaker's language, tone, point of view, and meaning.
+5. Output only the cleaned diary text. No title, hashtags, preamble, or commentary."""
+
+    /**
      * P4 REWRITE_LEGIBLE_V1 (V3-PROMPTS.md §1.5) — VERBATIM. Ramble/transcript → clean note,
      * streamed into the existing before/after sheet. Distinct from Clean-up (light tidy):
      * Rewrite is a full restructure. Params: temp 0.4, max_tokens 8192, streamed, reasoning

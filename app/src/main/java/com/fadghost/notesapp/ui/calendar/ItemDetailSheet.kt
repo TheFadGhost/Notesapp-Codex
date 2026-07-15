@@ -33,6 +33,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,10 +52,13 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Recurrence
 import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraDateTimePicker
+import com.fadghost.notesapp.ui.components.AuraToggle
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -107,7 +111,11 @@ fun ItemDetailSheet(
     onDelete: (ItemDraft) -> Unit
 ) {
     val tokens = Aura.tokens
+    val reduceMotion = LocalReduceMotion.current
     val visible = draft != null
+    var lastDraft by remember { mutableStateOf<ItemDraft?>(null) }
+    val renderedDraft = draft ?: lastDraft
+    SideEffect { if (draft != null) lastDraft = draft }
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     // The handle owns a small, deliberate drag affordance. Keeping this offset on
@@ -166,7 +174,12 @@ fun ItemDetailSheet(
         }
     }
 
-    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+    AnimatedVisibility(
+        visible,
+        enter = fadeIn(MotionTokens.fastFinite(reduceMotion)),
+        exit = fadeOut(MotionTokens.fastFinite(reduceMotion)),
+        modifier = Modifier.fillMaxSize()
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -180,10 +193,12 @@ fun ItemDetailSheet(
         ) {
             AnimatedVisibility(
                 visible,
-                enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(tween(140)),
-                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(120))
+                enter = slideInVertically(MotionTokens.bouncyFinite(reduceMotion)) { it } +
+                    fadeIn(MotionTokens.fastFinite(reduceMotion)),
+                exit = slideOutVertically(MotionTokens.fastFinite(reduceMotion)) { it } +
+                    fadeOut(MotionTokens.fastFinite(reduceMotion))
             ) {
-                val seed = draft ?: return@AnimatedVisibility
+                val seed = renderedDraft ?: return@AnimatedVisibility
                 SheetBody(
                     seed = seed,
                     zone = zone,
@@ -217,7 +232,10 @@ private fun SheetBody(
     var kind by remember(seed) { mutableStateOf(seed.kind) }
     var title by remember(seed) { mutableStateOf(seed.title) }
     var start by remember(seed) { mutableStateOf(toLdt(seed.start, zone)) }
-    var end by remember(seed) { mutableStateOf(toLdt(seed.end, zone)) }
+    var endEnabled by remember(seed) { mutableStateOf(seed.end != null) }
+    var end by remember(seed) {
+        mutableStateOf(toLdt(seed.end ?: EventEndTime.defaultFor(seed.start), zone))
+    }
     var notes by remember(seed) { mutableStateOf(seed.notes) }
     var recurrence by remember(seed) { mutableStateOf(seed.recurrence) }
     var notificationLeadMinutes by remember(seed) { mutableStateOf(seed.notificationLeadMinutes) }
@@ -281,9 +299,15 @@ private fun SheetBody(
         Box(Modifier.horizontalScroll(rememberScrollState())) {
             AuraDateTimePicker(value = start, onChange = { newStart ->
                 // Keep the event duration when the user shifts the start.
-                if (kind == CalendarKind.EVENT) {
-                    val delta = java.time.Duration.between(start, newStart)
-                    end = end.plus(delta)
+                if (kind == CalendarKind.EVENT && endEnabled) {
+                    end = toLdt(
+                        EventEndTime.moveWithStart(
+                            toMillis(start, zone),
+                            toMillis(newStart, zone),
+                            toMillis(end, zone)
+                        ),
+                        zone
+                    )
                 }
                 start = newStart
             }, zone = zone)
@@ -291,10 +315,33 @@ private fun SheetBody(
 
         if (kind == CalendarKind.EVENT) {
             Spacer(Modifier.size(14.dp))
-            BasicText("Ends", style = AuraType.label.copy(color = tokens.colors.textSecondary))
-            Spacer(Modifier.size(6.dp))
-            Box(Modifier.horizontalScroll(rememberScrollState())) {
-                AuraDateTimePicker(value = end, onChange = { end = it }, zone = zone)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    BasicText("End time", style = AuraType.label.copy(color = tokens.colors.textPrimary))
+                    BasicText(
+                        if (endEnabled) "Event has a finish time" else "No end time",
+                        style = AuraType.label.copy(color = tokens.colors.textSecondary)
+                    )
+                }
+                AuraToggle(checked = endEnabled, onCheckedChange = { enabled ->
+                    if (enabled && !end.isAfter(start)) {
+                        end = toLdt(EventEndTime.defaultFor(toMillis(start, zone)), zone)
+                    }
+                    endEnabled = enabled
+                })
+            }
+            if (endEnabled) {
+                Spacer(Modifier.size(8.dp))
+                Box(Modifier.horizontalScroll(rememberScrollState())) {
+                    AuraDateTimePicker(value = end, onChange = { candidate ->
+                        end = toLdt(
+                            EventEndTime.validEnd(
+                                toMillis(start, zone), toMillis(candidate, zone)
+                            ),
+                            zone
+                        )
+                    }, zone = zone)
+                }
             }
         }
 
@@ -365,7 +412,9 @@ private fun SheetBody(
             SoftButton("Cancel", filled = false, onClick = onDismiss)
             Spacer(Modifier.size(10.dp))
             SaveButton(label = if (isNew) "Create" else "Save", enabled = canSave, onClick = {
-                val endMs = toMillis(if (end.isBefore(start)) start.plusHours(1) else end, zone)
+                val endMs = if (kind == CalendarKind.EVENT && endEnabled) {
+                    EventEndTime.validEnd(startMs, toMillis(end, zone))
+                } else null
                 onSave(
                     seed.copy(
                         kind = kind,

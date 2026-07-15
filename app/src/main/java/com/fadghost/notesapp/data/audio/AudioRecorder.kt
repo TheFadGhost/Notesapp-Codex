@@ -104,7 +104,7 @@ class AudioRecorder(
         runCatching { stop() }
         accumulator.paths().forEach { runCatching { File(it).delete() } }
         // Remove the note dir if we left it empty.
-        runCatching { if (noteDir.listFiles()?.isEmpty() == true) noteDir.delete() }
+        runCatching { AudioStorage.pruneEmptySessionParents(noteDir) }
     }
 
     private fun startSegment(index: Int) {
@@ -112,19 +112,22 @@ class AudioRecorder(
         // A session is never resumed into an existing filename. Refusing to overwrite is
         // safer than silently corrupting an attachment after a duplicated START command.
         check(!file.exists()) { "Recording segment already exists: ${file.name}" }
-        val rec = buildRecorder()
+        var rec: MediaRecorder? = null
         try {
+            rec = buildRecorder()
             rec.setOutputFile(file.absolutePath)
             rec.prepare()
             rec.start()
-        } catch (t: Throwable) {
-            runCatching { rec.reset() }
-            runCatching { rec.release() }
+            recorder = rec
+            currentFile = file
+        } catch (error: Throwable) {
+            runCatching { rec?.reset() }
+            runCatching { rec?.release() }
+            recorder = null
+            currentFile = null
             runCatching { file.delete() }
-            throw t
+            throw error
         }
-        recorder = rec
-        currentFile = file
         segmentStart = SystemClock.elapsedRealtime()
         pausedTotal = 0L
         isPaused = false
@@ -155,13 +158,19 @@ class AudioRecorder(
         } else {
             MediaRecorder()
         }
-        return rec.apply {
+        try {
+            rec.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             setAudioChannels(1)                 // MONO (PLAN.md §3)
             setAudioSamplingRate(16_000)        // 16 kHz
-            setAudioEncodingBitRate(48_000)     // ~48 kbps
+                setAudioEncodingBitRate(48_000)     // ~48 kbps
+            }
+            return rec
+        } catch (error: Throwable) {
+            runCatching { rec.release() }
+            throw error
         }
     }
 }

@@ -6,57 +6,51 @@ import androidx.lifecycle.viewModelScope
 import com.fadghost.notesapp.data.ai.AiRepository
 import com.fadghost.notesapp.data.ai.Connectivity
 import com.fadghost.notesapp.data.ai.net.OpenRouterError
+import com.fadghost.notesapp.data.ai.work.TranscribeQueueWorker
 import com.fadghost.notesapp.data.audio.AudioAttachmentRepository
-import com.fadghost.notesapp.data.audio.AudioRecorder
 import com.fadghost.notesapp.data.audio.RecordedSegment
 import com.fadghost.notesapp.data.audio.VoiceCommit
 import com.fadghost.notesapp.data.audio.VoiceProgress
+import com.fadghost.notesapp.data.audio.VoiceRecordingSession
+import com.fadghost.notesapp.data.audio.VoiceSessionState
 import com.fadghost.notesapp.data.audio.VoiceTranscriber
-import com.fadghost.notesapp.data.ai.work.TranscribeQueueWorker
 import com.fadghost.notesapp.data.db.entity.Note
 import com.fadghost.notesapp.data.repo.NotesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import java.util.UUID
+import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.UUID
-import javax.inject.Inject
-import kotlin.math.sqrt
 
-enum class VoicePhase { REQUEST_PERMISSION, DENIED, RECORDING, PROCESSING, QUEUED, DONE, ERROR }
+enum class VoicePhase { REQUEST_PERMISSION, DENIED, STARTING, RECORDING, PROCESSING, QUEUED, DONE, ERROR }
+
+object VoiceStartPolicy {
+    fun canStart(phase: VoicePhase): Boolean = phase == VoicePhase.REQUEST_PERMISSION
+}
 
 data class VoiceUiState(
     val phase: VoicePhase = VoicePhase.REQUEST_PERMISSION,
     val paused: Boolean = false,
     val elapsedMs: Long = 0,
     val amplitudes: List<Float> = emptyList(),
-    /** Human progress line during PROCESSING (e.g. "Uploading 1/2", "Transcribing…"). */
     val progress: String? = null,
-    /** Append-mode transcript, handed to the editor to insert at the caret. */
     val transcript: String? = null,
     val segments: List<RecordedSegment> = emptyList(),
     val error: String? = null,
-    /** New-note-mode: the note the transcript was committed into (host opens editor). */
     val committedNoteId: Long? = null
 )
 
 /**
- * Drives one voice-ramble session (PLAN.md §5): permission gating, recording with
- * live amplitude/timer + auto-segmenting, then the STT pipeline (uploading n/m →
- * transcribing → done) with cancel at every stage and an offline queued state. Two
- * modes: capture-sheet (new note — this VM creates + commits the note) and editor
- * append (returns the transcript for the editor to insert at the caret, then records
- * the attachment). One session at a time; [begin] fully resets.
+ * UI/transcription coordinator. Microphone ownership deliberately lives in
+ * [VoiceRecordingSession], allowing the in-app sheet and system overlay to control one recorder.
  */
 @HiltViewModel
 class VoiceRecordViewModel @Inject constructor(
@@ -68,141 +62,190 @@ class VoiceRecordViewModel @Inject constructor(
     private val connectivity: Connectivity,
     private val aiRepo: AiRepository
 ) : ViewModel() {
-
     private val _state = MutableStateFlow(VoiceUiState())
     val state: StateFlow<VoiceUiState> = _state.asStateFlow()
 
-    private var recorder: AudioRecorder? = null
-    private var tickJob: Job? = null
     private var pipelineJob: Job? = null
-
-    /**
-     * Serialises every [MediaRecorder] lifecycle call (start/stop/pause/resume and the
-     * segment rollover) so a rollover from the amplitude ticker can never race the
-     * user's stop/discard on the recorder (audit M4). Recorder calls run on
-     * [Dispatchers.IO]; only the amplitude/timer sampling stays on the main thread.
-     */
-    private val recorderLock = Mutex()
     private var noteId = 0L
     private var appendMode = false
+    private var transcriptOnly = false
     private var createdEmptyNote = false
     private var noteReady = false
     private var wantStart = false
+    private var sessionId = UUID.randomUUID().toString()
+    private var consumedFinishedSession: String? = null
+    private val consumerId = UUID.randomUUID().toString()
+    private var claimedSessionId: String? = null
+    private var audioCommitted = false
 
-    /** Prepare a session. [noteId] 0 => create a new note (capture sheet). */
-    fun begin(noteId: Long, append: Boolean) {
-        cancelJobs()
-        recorder = null
+    init {
+        viewModelScope.launch {
+            VoiceRecordingSession.state.collect { session ->
+                if (session.sessionId != sessionId) return@collect
+                when (session) {
+                    is VoiceSessionState.Starting -> _state.value = _state.value.copy(
+                        phase = VoicePhase.STARTING,
+                        error = null
+                    )
+                    is VoiceSessionState.Recording -> _state.value = _state.value.copy(
+                        phase = VoicePhase.RECORDING,
+                        paused = session.paused,
+                        elapsedMs = session.elapsedMs,
+                        amplitudes = session.amplitudes
+                    )
+                    is VoiceSessionState.Finished -> if (consumedFinishedSession != session.sessionId) {
+                        VoiceRecordingSession.claimFinished(session.sessionId, consumerId)?.let { claimed ->
+                            claimedSessionId = claimed.sessionId
+                            consumedFinishedSession = claimed.sessionId
+                            onRecordingFinished(claimed.segments)
+                        }
+                    }
+                    is VoiceSessionState.Failed -> handleSessionFailure(session)
+                    VoiceSessionState.Idle -> Unit
+                }
+            }
+        }
+    }
+
+    /** Prepare a session. [targetNoteId] 0 creates a new note after the user opens voice. */
+    fun begin(targetNoteId: Long, append: Boolean, transcriptOnly: Boolean = false) {
+        val existing = VoiceRecordingSession.state.value
+        val sameTarget = existing.targetNoteId == targetNoteId ||
+            (targetNoteId <= 0 && existing.targetNoteId != null && (transcriptOnly || !append))
+        if (existing.sessionId != null && existing.transcriptOnly == transcriptOnly && sameTarget &&
+            (existing is VoiceSessionState.Starting || existing is VoiceSessionState.Recording || existing is VoiceSessionState.Finished)
+        ) {
+            appendMode = append
+            this.transcriptOnly = transcriptOnly
+            sessionId = existing.sessionId!!
+            noteId = existing.targetNoteId ?: -1
+            noteReady = true
+            createdEmptyNote = !transcriptOnly && targetNoteId <= 0
+            if (existing is VoiceSessionState.Starting) {
+                _state.value = VoiceUiState(phase = VoicePhase.STARTING)
+            } else if (existing is VoiceSessionState.Recording) {
+                _state.value = VoiceUiState(
+                    phase = VoicePhase.RECORDING,
+                    paused = existing.paused,
+                    elapsedMs = existing.elapsedMs,
+                    amplitudes = existing.amplitudes
+                )
+            } else if (existing is VoiceSessionState.Finished && consumedFinishedSession != existing.sessionId) {
+                // Even when another coordinator already owns the terminal claim, this owner is
+                // not a fresh permission state and must never start a replacement recorder.
+                _state.value = VoiceUiState(phase = VoicePhase.PROCESSING, progress = "Finishing recording…")
+                VoiceRecordingSession.claimFinished(existing.sessionId, consumerId)?.let { claimed ->
+                    claimedSessionId = claimed.sessionId
+                    consumedFinishedSession = claimed.sessionId
+                    onRecordingFinished(claimed.segments)
+                }
+            }
+            return
+        }
+        pipelineJob?.cancel()
         appendMode = append
+        this.transcriptOnly = transcriptOnly
         createdEmptyNote = false
         noteReady = false
         wantStart = false
-        this.noteId = 0L
+        sessionId = UUID.randomUUID().toString()
+        consumedFinishedSession = null
+        claimedSessionId = null
+        audioCommitted = false
+        noteId = 0L
         _state.value = VoiceUiState(phase = VoicePhase.REQUEST_PERMISSION)
         viewModelScope.launch {
-            this@VoiceRecordViewModel.noteId = if (noteId > 0) {
-                noteId
-            } else {
+            noteId = if (transcriptOnly) -1L else if (targetNoteId > 0) targetNoteId else {
                 createdEmptyNote = true
                 val now = System.currentTimeMillis()
                 notes.saveNote(Note(id = 0, title = "", body = "", createdAt = now, updatedAt = now))
             }
             noteReady = true
-            // If the user already granted permission and we asked to start, go now that
-            // the target note (and its dir) exists — avoids recording into note id 0.
             if (wantStart) actuallyStart()
         }
     }
 
-    /** Permission granted — begin capturing (defers until the target note is ready). */
     fun startRecording() {
-        if (_state.value.phase == VoicePhase.RECORDING) return
+        if (!VoiceStartPolicy.canStart(_state.value.phase)) return
         wantStart = true
         if (noteReady) actuallyStart()
     }
 
     private fun actuallyStart() {
         wantStart = false
-        // Each recording gets its own directory. Reusing the bare note directory would
-        // restart naming at segment_000.m4a and overwrite an older voice attachment.
-        val sessionId = UUID.randomUUID().toString()
-        val rec = AudioRecorder(context, attachments.recordingDir(resolveNoteId(), sessionId))
-        recorder = rec
-        viewModelScope.launch {
-            // prepare()/start() are blocking MediaRecorder calls — keep them off Main.
-            val started = withContext(Dispatchers.IO) {
-                recorderLock.withLock { runCatching { rec.start() }.isSuccess }
-            }
-            if (!started) {
-                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Couldn't start recording.")
-                return@launch
-            }
-            _state.value = _state.value.copy(phase = VoicePhase.RECORDING, paused = false, elapsedMs = 0, amplitudes = emptyList())
-            startTicking()
+        val dir = if (transcriptOnly) {
+            File(context.cacheDir, "voice_transient/$sessionId")
+        } else {
+            com.fadghost.notesapp.data.audio.AudioStorage.sessionDir(attachments.noteDir(noteId), sessionId)
         }
+        VoiceRecordingSession.start(context, sessionId, dir, noteId, transcriptOnly)
+        _state.value = _state.value.copy(phase = VoicePhase.STARTING, error = null)
     }
 
-    fun onPermissionDenied() {
-        _state.value = _state.value.copy(phase = VoicePhase.DENIED)
-    }
+    fun onPermissionDenied() { _state.value = _state.value.copy(phase = VoicePhase.DENIED) }
 
-    fun togglePause() {
-        val rec = recorder ?: return
-        viewModelScope.launch {
-            val nowPaused = withContext(Dispatchers.IO) {
-                recorderLock.withLock {
-                    if (rec.isPaused) { rec.resume(); false } else { rec.pause(); true }
-                }
-            }
-            _state.value = _state.value.copy(paused = nowPaused)
-        }
-    }
+    fun togglePause() = VoiceRecordingSession.togglePause(context, sessionId)
 
-    /** Stop capture and run (or queue) transcription. */
-    fun stop() {
-        val rec = recorder ?: return
-        tickJob?.cancel()
-        viewModelScope.launch {
-            // stop() finalises the current segment (recorder.stop/release) — off Main and
-            // under the lock so it can't collide with an in-flight rollover (audit M4).
-            val segments = withContext(Dispatchers.IO) {
-                recorderLock.withLock { runCatching { rec.stop() }.getOrDefault(emptyList()) }
+    fun stop() = VoiceRecordingSession.stop(context, sessionId)
+
+    private fun onRecordingFinished(segments: List<RecordedSegment>) {
+        if (!connectivity.isOnline()) {
+            if (transcriptOnly) {
+                deleteTransient(segments)
+                acknowledgeClaim()
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.ERROR,
+                    error = "Connect to the internet to transcribe this diary recording.",
+                    segments = emptyList()
+                )
+                return
             }
-            if (segments.isEmpty()) {
-                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Nothing was recorded.")
-                return@launch
-            }
-            if (!connectivity.isOnline()) {
-                TranscribeQueueWorker.enqueue(context, resolveNoteId(), segments)
-                _state.value = _state.value.copy(phase = VoicePhase.QUEUED, segments = segments)
-                return@launch
-            }
-            runTranscription(segments)
-        }
+            TranscribeQueueWorker.enqueue(context, noteId, segments, sessionId)
+            _state.value = _state.value.copy(phase = VoicePhase.QUEUED, segments = segments)
+            acknowledgeClaim()
+        } else runTranscription(segments)
     }
 
     private fun runTranscription(segments: List<RecordedSegment>) {
-        _state.value = _state.value.copy(phase = VoicePhase.PROCESSING, progress = "Uploading…", error = null, segments = segments)
+        _state.value = _state.value.copy(
+            phase = VoicePhase.PROCESSING,
+            progress = "Uploading…",
+            error = null,
+            segments = segments
+        )
         pipelineJob?.cancel()
         pipelineJob = viewModelScope.launch {
             try {
-                val files = segments.map { File(it.path) }
-                val transcript = transcriber.transcribe(files, resolveNoteId()) { p -> _state.value = _state.value.copy(progress = label(p)) }
-                if (appendMode) {
-                    // Editor inserts at the caret; hand back the transcript + segments.
+                val transcript = transcriber.transcribe(
+                    segments.map { File(it.path) },
+                    noteId = noteId.takeUnless { transcriptOnly }
+                ) { progress ->
+                    _state.value = _state.value.copy(progress = label(progress))
+                }
+                if (appendMode || transcriptOnly) {
                     _state.value = _state.value.copy(phase = VoicePhase.DONE, transcript = transcript, progress = null)
+                    if (transcriptOnly) deleteTransient(segments)
+                    acknowledgeClaim()
                 } else {
-                    voiceCommit.appendTranscript(resolveNoteId(), transcript, segments)
-                    maybeAutoClean(resolveNoteId())
-                    _state.value = _state.value.copy(phase = VoicePhase.DONE, committedNoteId = resolveNoteId(), progress = null)
+                    voiceCommit.appendTranscript(noteId, transcript, segments)
+                    audioCommitted = true
+                    maybeAutoClean(noteId)
+                    _state.value = _state.value.copy(phase = VoicePhase.DONE, committedNoteId = noteId, progress = null)
+                    acknowledgeClaim()
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = friendly(e))
+                deleteUncommitted(segments)
+                acknowledgeClaim()
+                cleanupPlaceholderIfNeeded()
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.ERROR,
+                    error = "${friendly(e)} This recording was not committed; record it again.",
+                    segments = emptyList()
+                )
             }
         }
     }
 
-    /** Auto-run the M2 Clean-up flow on the freshly-appended note when enabled + online. */
     private suspend fun maybeAutoClean(id: Long) {
         if (!transcriber.autoClean() || !connectivity.isOnline()) return
         runCatching {
@@ -213,104 +256,105 @@ class VoiceRecordViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Append-mode: after the editor has inserted the transcript at the caret it calls
-     * this with the resolved offsets so the audio attachment (chip anchor) is recorded.
-     */
     fun commitEditorAttachment(transcriptStart: Int, transcriptEnd: Int) {
         val segments = _state.value.segments
         if (segments.isEmpty()) return
-        val id = resolveNoteId()
         viewModelScope.launch {
-            attachments.record(id, segments, transcriptStart, transcriptEnd)
+            attachments.record(noteId, segments, transcriptStart, transcriptEnd)
+            audioCommitted = true
         }
     }
 
     fun retry() {
-        val segments = _state.value.segments
-        if (segments.isNotEmpty()) runTranscription(segments)
+        _state.value = _state.value.copy(error = "Retry is disabled to avoid charging twice. Please make a new recording.")
     }
 
-    /** Discard the recording (and the empty note if we created one). */
     fun discard() {
-        cancelJobs()
-        val rec = recorder
-        recorder = null
+        pipelineJob?.cancel()
+        VoiceRecordingSession.discard(context, sessionId)
+        if (transcriptOnly) deleteTransient(_state.value.segments)
+        else deleteUncommitted(_state.value.segments)
+        acknowledgeClaim()
+        VoiceRecordingSession.clearTerminal(sessionId)
         val id = noteId
-        val hadEmptyNote = createdEmptyNote
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) { recorderLock.withLock { runCatching { rec?.discard() } } }
-            if (hadEmptyNote && id > 0) runCatching { notes.hardDeleteIfEmpty(id) }
-        }
+        val deleteEmpty = createdEmptyNote
+        viewModelScope.launch { if (deleteEmpty && id > 0) runCatching { notes.hardDeleteIfEmpty(id) } }
         _state.value = VoiceUiState(phase = VoicePhase.REQUEST_PERMISSION)
     }
 
-    /** Cancel an in-flight upload/transcription (returns to a discardable state). */
     fun cancelProcessing() {
         pipelineJob?.cancel()
-        _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Cancelled.")
+        deleteUncommitted(_state.value.segments)
+        acknowledgeClaim()
+        cleanupPlaceholderIfNeeded()
+        _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = "Cancelled. The uncommitted recording was deleted.", segments = emptyList())
     }
 
-    private fun startTicking() {
-        tickJob?.cancel()
-        tickJob = viewModelScope.launch {
-            while (true) {
-                val rec = recorder ?: break
-                if (!rec.isPaused) {
-                    // Rollover finalises/starts a segment — run it off Main under the lock
-                    // (audit M4). The amplitude/timer sampling below stays on Main.
-                    withContext(Dispatchers.IO) { recorderLock.withLock { rec.maybeRollover() } }
-                    val amp = normalize(rec.amplitude())
-                    val next = (_state.value.amplitudes + amp).takeLast(MAX_SAMPLES)
-                    _state.value = _state.value.copy(elapsedMs = rec.totalElapsedMs(), amplitudes = next)
-                }
-                delay(SAMPLE_INTERVAL_MS)
-            }
-        }
-    }
-
-    private fun normalize(raw: Int): Float {
-        val n = (raw.toFloat() / MAX_AMPLITUDE).coerceIn(0f, 1f)
-        return sqrt(n) // perceptual boost for quiet speech
-    }
-
-    private fun label(p: VoiceProgress): String = when (p) {
-        is VoiceProgress.Uploading -> if (p.total > 1) "Uploading ${p.index}/${p.total}" else "Uploading…"
-        is VoiceProgress.Transcribing -> if (p.total > 1) "Transcribing ${p.index}/${p.total}" else "Transcribing…"
+    private fun label(progress: VoiceProgress): String = when (progress) {
+        is VoiceProgress.Uploading -> if (progress.total > 1) "Uploading ${progress.index}/${progress.total}" else "Uploading…"
+        is VoiceProgress.Transcribing -> if (progress.total > 1) "Transcribing ${progress.index}/${progress.total}" else "Transcribing…"
         VoiceProgress.Done -> "Done"
     }
 
-    private fun friendly(e: Throwable): String = when (e) {
+    private fun friendly(error: Throwable): String = when (error) {
         is OpenRouterError.InvalidKey -> "Your API key was rejected. Check it in Settings."
         is OpenRouterError.NoCredit -> "Your OpenRouter account is out of credit."
         is OpenRouterError.RateLimited -> "Rate limited — try again in a moment."
-        is OpenRouterError.ModelUnavailable -> "STT model \"${e.model}\" is unavailable. Pick another in Settings."
+        is OpenRouterError.ModelUnavailable -> "STT model \"${error.model}\" is unavailable. Pick another in Settings."
         is OpenRouterError.Network -> "Couldn't reach OpenRouter. Your audio is saved."
         is OpenRouterError.Parse -> "Couldn't read the transcript. Try again."
         else -> "Something went wrong. Your audio is saved."
     }
 
-    private fun resolveNoteId(): Long = noteId
+    private fun deleteTransient(segments: List<RecordedSegment>) {
+        val parents = segments.map { File(it.path).parentFile }.toSet()
+        segments.forEach { runCatching { File(it.path).delete() } }
+        parents.forEach { parent -> if (parent != null) runCatching {
+            com.fadghost.notesapp.data.audio.AudioStorage.pruneEmptySessionParents(parent)
+        } }
+    }
 
-    private fun cancelJobs() {
-        tickJob?.cancel(); tickJob = null
-        pipelineJob?.cancel(); pipelineJob = null
+    private fun deleteUncommitted(segments: List<RecordedSegment>) {
+        if (!audioCommitted) deleteTransient(segments)
+    }
+
+    private fun acknowledgeClaim() {
+        claimedSessionId?.let { VoiceRecordingSession.acknowledge(it, consumerId) }
+        claimedSessionId = null
+    }
+
+    private fun handleSessionFailure(failure: VoiceSessionState.Failed) {
+        deleteUncommitted(_state.value.segments)
+        cleanupPlaceholderIfNeeded()
+        VoiceRecordingSession.clearTerminal(failure.sessionId)
+        _state.value = _state.value.copy(phase = VoicePhase.ERROR, error = failure.message, segments = emptyList())
+    }
+
+    private fun cleanupPlaceholderIfNeeded() {
+        val id = noteId
+        if (createdEmptyNote && id > 0) viewModelScope.launch { runCatching { notes.hardDeleteIfEmpty(id) } }
+        if (transcriptOnly) runCatching { File(context.cacheDir, "voice_transient/$sessionId").deleteRecursively() }
     }
 
     override fun onCleared() {
-        super.onCleared()
-        cancelJobs()
-        val rec = recorder
-        recorder = null
-        // viewModelScope is cancelled by now; best-effort stop off Main on a detached scope.
-        CoroutineScope(Dispatchers.IO).launch {
-            recorderLock.withLock { runCatching { rec?.stop() } }
+        pipelineJob?.cancel()
+        if (_state.value.phase == VoicePhase.PROCESSING) {
+            deleteUncommitted(_state.value.segments)
+            acknowledgeClaim()
+            cleanupPlaceholderDetached()
+        } else {
+            claimedSessionId?.let { VoiceRecordingSession.releaseClaim(it, consumerId) }
         }
+        // Recording intentionally survives the UI owner; the foreground service remains owner.
+        super.onCleared()
     }
 
-    private companion object {
-        const val SAMPLE_INTERVAL_MS = 80L
-        const val MAX_SAMPLES = 96
-        const val MAX_AMPLITUDE = 32767f
+    private fun cleanupPlaceholderDetached() {
+        val id = noteId
+        val shouldDelete = createdEmptyNote && id > 0
+        if (!shouldDelete) return
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { notes.hardDeleteIfEmpty(id) }
+        }
     }
 }

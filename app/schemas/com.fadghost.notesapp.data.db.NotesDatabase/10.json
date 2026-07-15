@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 9,
-    "identityHash": "1d1cc8c8a5691e70c9d003e8c4e97b62",
+    "version": 10,
+    "identityHash": "3c6de12718f235143b970e0dd811716a",
     "entities": [
       {
         "tableName": "Note",
@@ -336,7 +336,7 @@
       },
       {
         "tableName": "Event",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER NOT NULL, `timezone` TEXT NOT NULL, `notes` TEXT, `recurrence` TEXT NOT NULL, `notificationLeadMinutes` INTEGER, `lastNotifiedOccurrenceAt` INTEGER)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER, `timezone` TEXT NOT NULL, `notes` TEXT, `recurrence` TEXT NOT NULL, `notificationLeadMinutes` INTEGER, `lastNotifiedOccurrenceAt` INTEGER)",
         "fields": [
           {
             "fieldPath": "id",
@@ -360,7 +360,7 @@
             "fieldPath": "endAt",
             "columnName": "endAt",
             "affinity": "INTEGER",
-            "notNull": true
+            "notNull": false
           },
           {
             "fieldPath": "timezone",
@@ -423,7 +423,7 @@
       },
       {
         "tableName": "Reminder",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `timezone` TEXT NOT NULL, `done` INTEGER NOT NULL, `snoozedUntil` INTEGER, `recurrence` TEXT NOT NULL, `sourceNoteId` INTEGER, `lastNotifiedTriggerAt` INTEGER, FOREIGN KEY(`sourceNoteId`) REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `timezone` TEXT NOT NULL, `done` INTEGER NOT NULL, `snoozedUntil` INTEGER, `alarmFired` INTEGER NOT NULL, `recurrence` TEXT NOT NULL, `sourceNoteId` INTEGER, `lastNotifiedTriggerAt` INTEGER, FOREIGN KEY(`sourceNoteId`) REFERENCES `Note`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "id",
@@ -460,6 +460,12 @@
             "columnName": "snoozedUntil",
             "affinity": "INTEGER",
             "notNull": false
+          },
+          {
+            "fieldPath": "alarmFired",
+            "columnName": "alarmFired",
+            "affinity": "INTEGER",
+            "notNull": true
           },
           {
             "fieldPath": "recurrence",
@@ -995,7 +1001,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1d1cc8c8a5691e70c9d003e8c4e97b62')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3c6de12718f235143b970e0dd811716a')"
     ]
   }
 }

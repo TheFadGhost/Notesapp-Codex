@@ -12,8 +12,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <!-- Optional v3.2 floating controls for an active Voice Ramble. The user grants this from
-         Android's system screen; the app never draws an overlay without that consent. -->
+    <!-- Floating recording controls are shown only after the user grants Android's overlay
+         permission; the app never draws over other apps without that consent. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Calendar / reminders (PLAN.md §8). USE_EXACT_ALARM is auto-granted for this
@@ -84,6 +84,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <service
+            android:name=".data.audio.VoiceRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+        <service
+            android:name=".ui.overlay.RecordingOverlayService"
+            android:exported="false" />
 
         <!-- Quick-settings "New note" tile (PLAN.md §6). -->
         <service

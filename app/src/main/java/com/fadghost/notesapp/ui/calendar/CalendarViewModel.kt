@@ -2,8 +2,8 @@ package com.fadghost.notesapp.ui.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.fadghost.notesapp.alarm.AlarmScheduler
 import com.fadghost.notesapp.alarm.EventAlarm
+import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.calendar.EventNotificationMath
 import com.fadghost.notesapp.data.db.dao.EventDao
 import com.fadghost.notesapp.data.db.dao.ReminderDao
@@ -32,13 +32,13 @@ data class CalendarData(
  * Backs the Calendar tab (PLAN.md §8). Streams the raw event + reminder rows;
  * occurrence expansion for the visible window happens in the composables so month
  * swipes never re-hit the DB. Owns create/edit/delete and — for reminders — keeps
- * the exact alarm in sync through [AlarmScheduler].
+ * the exact alarms in sync through [ReminderAlarm] and [EventAlarm].
  */
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
     private val eventDao: EventDao,
     private val reminderDao: ReminderDao,
-    private val alarmScheduler: AlarmScheduler,
+    private val alarmScheduler: ReminderAlarm,
     private val eventAlarm: EventAlarm
 ) : ViewModel() {
 
@@ -63,7 +63,7 @@ class CalendarViewModel @Inject constructor(
         baseId: Long,
         title: String,
         startAt: Long,
-        endAt: Long,
+        endAt: Long?,
         timezone: String,
         notes: String?,
         recurrence: Recurrence,
@@ -82,7 +82,7 @@ class CalendarViewModel @Inject constructor(
                     id = baseId,
                     title = title.trim().ifBlank { "Event" },
                     startAt = startAt,
-                    endAt = endAt.coerceAtLeast(startAt),
+                    endAt = endAt?.let { EventEndTime.validEnd(startAt, it) },
                     timezone = timezone,
                     notes = notes?.trim()?.takeIf { it.isNotBlank() },
                     recurrence = recurrence,
@@ -129,6 +129,9 @@ class CalendarViewModel @Inject constructor(
                 existing.timezone == timezone &&
                 existing.recurrence == recurrence &&
                 existing.snoozedUntil == null
+            // Editing keeps the same PendingIntent identity. Cancel first so both the
+            // old alarm and any already-visible notification are replaced cleanly.
+            if (baseId != 0L) alarmScheduler.cancelReminder(baseId)
             val id = reminderDao.upsert(
                 Reminder(
                     id = baseId,
@@ -137,6 +140,7 @@ class CalendarViewModel @Inject constructor(
                     timezone = timezone,
                     done = false,
                     snoozedUntil = null,
+                    alarmFired = existing?.alarmFired?.takeIf { scheduleUnchanged } ?: false,
                     recurrence = recurrence,
                     sourceNoteId = existing?.sourceNoteId,
                     lastNotifiedTriggerAt = existing?.lastNotifiedTriggerAt
@@ -156,7 +160,7 @@ class CalendarViewModel @Inject constructor(
             if (existing != null) {
                 offerUndo("Reminder deleted") {
                     reminderDao.upsert(existing)
-                    if (!existing.done) alarmScheduler.scheduleReminder(existing)
+                    if (!existing.done && !existing.alarmFired) alarmScheduler.scheduleReminder(existing)
                 }
             }
         }
@@ -168,8 +172,22 @@ class CalendarViewModel @Inject constructor(
             if (done) {
                 alarmScheduler.cancelReminder(baseId)
             } else {
+                val reminder = reminderDao.getById(baseId) ?: return@launch
+                reminderDao.setAlarmFired(baseId, false)
+                reminderDao.releaseNotificationClaim(
+                    baseId,
+                    reminder.snoozedUntil ?: reminder.triggerAt
+                )
                 reminderDao.getById(baseId)?.let { alarmScheduler.scheduleReminder(it) }
             }
+        }
+    }
+
+    /** Re-check pending rows after returning from OS alarm/notification settings. */
+    fun reschedulePending() {
+        viewModelScope.launch {
+            alarmScheduler.rescheduleAll()
+            eventAlarm.rescheduleAll()
         }
     }
 
