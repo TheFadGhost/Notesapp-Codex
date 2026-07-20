@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AttachmentViewer(attachment: Attachment?, onDismiss: () -> Unit) {
     val visible = attachment != null && attachment.isImage
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         if (attachment != null) ViewerContent(attachment, onDismiss)
     }
@@ -138,7 +139,7 @@ private fun ViewerContent(att: Attachment, onDismiss: () -> Unit) {
                             if (dismiss.value > dismissThreshold) onDismiss()
                             else scope.launch {
                                 if (reduceMotion) dismiss.snapTo(0f)
-                                else dismiss.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
+                                else dismiss.animateTo(0f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium))
                             }
                         }
                     ) { _, dy ->
@@ -188,7 +189,7 @@ private fun ViewerContent(att: Attachment, onDismiss: () -> Unit) {
                     .navigationBarsPadding()
                     .padding(bottom = 24.dp)
                     .clip(RoundedCornerShape(tokens.radii.pill))
-                    .background(Color.Black.copy(alpha = 0.55f))
+                    .background(tokens.colors.scrimTint.copy(alpha = 0.55f))
                     .auraPress(copyInteraction)
                     .clickable(copyInteraction, indication = null) {
                         clipboard.setText(AnnotatedString(ocr))
@@ -198,7 +199,7 @@ private fun ViewerContent(att: Attachment, onDismiss: () -> Unit) {
                     .semantics { contentDescription = if (copied) "Text copied" else "Copy text from image" },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AuraGlyph(if (copied) Glyph.CHECK else Glyph.DUPLICATE, Color.White, Modifier.size(16.dp))
+                AuraGlyph(if (copied) Glyph.CHECK else Glyph.COPY, Color.White, Modifier.size(16.dp))
                 Box(Modifier.width(8.dp))
                 BasicText(
                     if (copied) "Copied" else "Copy text",
@@ -216,7 +217,7 @@ private fun ViewerContent(att: Attachment, onDismiss: () -> Unit) {
                 .padding(12.dp)
                 .size(44.dp)
                 .clip(RoundedCornerShape(tokens.radii.pill))
-                .background(Color.Black.copy(alpha = 0.4f))
+                .background(tokens.colors.scrimTint.copy(alpha = 0.4f))
                 .auraPress(closeInteraction)
                 .clickable(closeInteraction, indication = null, onClick = onDismiss)
                 .semantics { contentDescription = "Close" },

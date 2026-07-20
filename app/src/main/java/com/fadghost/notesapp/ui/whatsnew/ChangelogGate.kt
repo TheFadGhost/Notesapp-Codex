@@ -7,10 +7,10 @@ package com.fadghost.notesapp.ui.whatsnew
 object ChangelogGate {
     /**
      * Show when the current versionName is non-blank and differs from the last version
-     * the sheet was shown for. A blank [lastSeen] (fresh install / never shown) still
-     * shows — first-run users get the changelog too, which is acceptable and matches
-     * "once per versionName".
+     * the sheet was shown for. A blank [lastSeen] means fresh install: a newcomer must
+     * NOT be greeted by a changelog for features they've never seen (council finding) —
+     * the Welcome sheet owns first run; the changelog starts with the first update.
      */
     fun shouldShow(lastSeen: String, current: String): Boolean =
-        current.isNotBlank() && lastSeen != current
+        current.isNotBlank() && lastSeen.isNotBlank() && lastSeen != current
 }

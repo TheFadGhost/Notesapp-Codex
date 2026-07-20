@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.theme.Aura
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Aura mic control implementing tap-to-toggle and hold-to-talk. Pointer tracking is by id and
@@ -72,7 +74,7 @@ fun RambleButton(
 
     val scale by animateFloatAsState(
         targetValue = if (gesture.pressed) 0.92f else 1f,
-        animationSpec = spring(stiffness = 650f),
+        animationSpec = MotionTokens.press(LocalReduceMotion.current),
         label = "rambleMicPress"
     )
     val active = recording || gesture.recording

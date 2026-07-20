@@ -56,6 +56,8 @@ import com.fadghost.notesapp.ui.theme.auraSheetShadow
 import com.fadghost.notesapp.ui.theme.ThemeResolver
 import com.fadghost.notesapp.ui.theme.ThemeSwitchController
 import com.fadghost.notesapp.ui.theme.ThemeTokens
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Appearance settings (PLAN.md §9/§10): animated theme-preview swatch picker across
@@ -73,18 +75,7 @@ fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
     val textScale by viewModel.textScale.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
-            .clip(RoundedCornerShape(tokens.radii.md))
-            .background(tokens.colors.surface)
-            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
-            .padding(16.dp)
-    ) {
-        BasicText("APPEARANCE", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
-        Spacer(Modifier.height(14.dp))
-
+    com.fadghost.notesapp.ui.components.SectionCard(title = "Appearance") {
         BasicText("Theme", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(10.dp))
         // Wrap every swatch into view instead of a horizontally-scrolling row that hid the
@@ -180,8 +171,8 @@ private fun ThemeSwatchCard(
     val tokens = Aura.tokens
     val haptics = rememberAuraHaptics()
     val view = LocalView.current
-    val ringAlpha by animateFloatAsState(if (selected) 1f else 0f, label = "ring")
-    val lift by animateDpAsState(if (selected) 2.dp else 0.dp, label = "lift")
+    val ringAlpha by animateFloatAsState(if (selected) 1f else 0f, animationSpec = MotionTokens.fast(LocalReduceMotion.current), label = "ring")
+    val lift by animateDpAsState(if (selected) 2.dp else 0.dp, animationSpec = MotionTokens.fast(LocalReduceMotion.current), label = "lift")
     var center by remember { androidx.compose.runtime.mutableStateOf(Offset(0.5f, 0.5f)) }
     val interaction = remember { MutableInteractionSource() }
 
@@ -291,7 +282,7 @@ private fun AccentDot(
 ) {
     val tokens = Aura.tokens
     val haptics = rememberAuraHaptics()
-    val ring by animateFloatAsState(if (selected) 1f else 0f, label = "accentRing")
+    val ring by animateFloatAsState(if (selected) 1f else 0f, animationSpec = MotionTokens.fast(LocalReduceMotion.current), label = "accentRing")
     val interaction = remember { MutableInteractionSource() }
     // 48dp touch target (PLAN.md §11) with a smaller visual dot centred inside.
     Box(

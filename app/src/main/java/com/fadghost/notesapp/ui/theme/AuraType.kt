@@ -45,7 +45,7 @@ val AuraSans = FontFamily(sansFont(400), sansFont(420), sansFont(520), sansFont(
  * re-override weight/size — the token owns those.
  */
 object AuraType {
-    /** Reserved: onboarding / What's-New hero only. */
+    /** Reserved: onboarding / What's-New hero + hero stats (streak count). */
     val display = TextStyle(
         fontFamily = AuraSerif, fontWeight = FontWeight(480),
         fontSize = 34.sp, lineHeight = 38.sp, letterSpacing = (-0.015).em
@@ -99,5 +99,4 @@ object AuraType {
      * still reference it. It carries the AuraSerif font like every token, so no
      * Roboto leaks. Prefer the explicit tokens (titleLg/titleSm) in new code.
      */
-    val title = titleLg
 }

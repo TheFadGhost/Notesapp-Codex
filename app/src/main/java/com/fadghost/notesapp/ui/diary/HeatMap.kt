@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import java.time.LocalDate
 
 /**
@@ -52,7 +53,7 @@ fun DiaryHeatMap(
     var pressed by remember { mutableStateOf(false) }
     val pressScale by animateFloatAsState(
         targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
-        animationSpec = tween(if (reduceMotion) 0 else 100),
+        animationSpec = MotionTokens.press(reduceMotion),
         label = "heatPressScale"
     )
     if (cells.isEmpty()) return

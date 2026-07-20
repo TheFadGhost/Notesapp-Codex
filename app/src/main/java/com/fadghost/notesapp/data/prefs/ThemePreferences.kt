@@ -30,6 +30,7 @@ class ThemePreferences @Inject constructor(
     private val reduceMotionKey = booleanPreferencesKey("reduce_motion")
     private val lastSeenVersionKey = stringPreferencesKey("last_seen_version")
     private val textScaleKey = floatPreferencesKey("text_scale")
+    private val welcomeSeenKey = booleanPreferencesKey("welcome_seen")
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
         runCatching { ThemeMode.valueOf(prefs[themeKey] ?: ThemeMode.SYSTEM.name) }
@@ -77,6 +78,13 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setLastSeenVersion(version: String) {
         context.dataStore.edit { it[lastSeenVersionKey] = version }
+    }
+
+    /** First-run Welcome sheet gate (council: a cold user needs a map). */
+    val welcomeSeen: Flow<Boolean> = context.dataStore.data.map { it[welcomeSeenKey] ?: false }
+
+    suspend fun setWelcomeSeen() {
+        context.dataStore.edit { it[welcomeSeenKey] = true }
     }
 
     companion object {

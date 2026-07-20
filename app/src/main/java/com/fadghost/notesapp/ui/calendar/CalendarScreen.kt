@@ -58,6 +58,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -106,7 +108,13 @@ fun CalendarScreen(
     val today = remember { LocalDate.now(zone) }
     var selectedEpochDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
     val selected = LocalDate.ofEpochDay(selectedEpochDay)
-    var visibleMonth by remember { mutableStateOf(YearMonth.from(selected)) }
+    // Saveable: the browsed month must survive rotation / process death.
+    var visibleMonth by rememberSaveable(
+        stateSaver = androidx.compose.runtime.saveable.Saver(
+            save = { it.toString() },
+            restore = { YearMonth.parse(it) }
+        )
+    ) { mutableStateOf(YearMonth.from(selected)) }
 
     var draft by remember { mutableStateOf<ItemDraft?>(null) }
     var agendaExpanded by rememberSaveable { mutableStateOf(true) }
@@ -126,6 +134,7 @@ fun CalendarScreen(
             when (msg.signal) {
                 ShellSignal.SCROLL_TOP -> scope.launch { listState.animateScrollToItem(0) }
                 ShellSignal.FAB_PRIMARY -> openNew()
+                else -> {}
             }
         }
     }
@@ -307,8 +316,9 @@ fun CalendarScreen(
                         Spacer(Modifier.weight(1f))
                         Box(
                             Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .clip(RoundedCornerShape(tokens.radii.pill))
+                                .semantics { contentDescription = if (agendaExpanded) "Collapse agenda" else "Expand agenda" }
                                 .auraPress(agendaToggleInteraction)
                                 .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
                                 .clickable(
@@ -335,7 +345,8 @@ fun CalendarScreen(
                             AgendaRow(
                                 item = item, zone = zone,
                                 onClick = { editItem(item) },
-                                onToggleDone = { viewModel.setReminderDone(item.baseId, !item.done) }
+                                onToggleDone = { viewModel.setReminderDone(item.baseId, !item.done) },
+                                modifier = Modifier.animateItem()
                             )
                         }
                     }
@@ -514,13 +525,14 @@ private fun AgendaRow(
     item: CalendarItem,
     zone: ZoneId,
     onClick: () -> Unit,
-    onToggleDone: () -> Unit
+    onToggleDone: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val tokens = Aura.tokens
     val accent = if (item.kind == CalendarKind.EVENT) tokens.colors.accent else tokens.colors.danger
     val rowInteraction = remember { MutableInteractionSource() }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
@@ -557,17 +569,27 @@ private fun AgendaRow(
         if (item.kind == CalendarKind.REMINDER) {
             Spacer(Modifier.size(10.dp))
             val toggleInteraction = remember { MutableInteractionSource() }
+            // 44dp hit box around the 26dp visual disc — a near-miss used to open the
+            // edit sheet instead of toggling done (council G9).
             Box(
                 Modifier
-                    .size(26.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
+                    .semantics { contentDescription = if (item.done) "Mark not done" else "Mark done" }
                     .auraPress(toggleInteraction)
-                    .border(1.5.dp, if (item.done) accent else tokens.colors.outline, CircleShape)
-                    .background(if (item.done) accent else androidx.compose.ui.graphics.Color.Transparent)
                     .clickable(interactionSource = toggleInteraction, indication = null, onClick = onToggleDone),
                 contentAlignment = Alignment.Center
             ) {
-                if (item.done) AuraGlyph(Glyph.CHECK, tokens.colors.background, Modifier.size(16.dp))
+                Box(
+                    Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .border(1.5.dp, if (item.done) accent else tokens.colors.outline, CircleShape)
+                        .background(if (item.done) accent else androidx.compose.ui.graphics.Color.Transparent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (item.done) AuraGlyph(Glyph.CHECK, tokens.colors.background, Modifier.size(16.dp))
+                }
             }
         }
     }

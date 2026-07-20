@@ -57,6 +57,8 @@ import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
 import com.fadghost.notesapp.ui.theme.auraSheetShadow
 import com.fadghost.notesapp.ui.theme.auraTopHighlight
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Settings → AI section (PLAN.md §5): paste/test/clear key, text + STT model
@@ -101,9 +103,31 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
         BasicText("OpenRouter API key", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
         BasicText(
             if (hasKey) "Stored securely (Keystore-encrypted, never backed up)"
-            else "Add later — AI stays optional",
+            else "OpenRouter is a pay-per-use AI gateway — you bring your own key and only pay for what Folio uses. Optional.",
             style = AuraType.label.copy(color = tokens.colors.textSecondary)
         )
+        if (!hasKey) {
+            val linkContext = androidx.compose.ui.platform.LocalContext.current
+            val linkInteraction = remember { MutableInteractionSource() }
+            BasicText(
+                "Create a key at openrouter.ai/keys →",
+                style = AuraType.label.copy(color = tokens.colors.accent),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(tokens.radii.pill))
+                    .auraPress(linkInteraction)
+                    .clickable(linkInteraction, indication = null) {
+                        runCatching {
+                            linkContext.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://openrouter.ai/keys")
+                                )
+                            )
+                        }
+                    }
+                    .padding(vertical = 6.dp)
+            )
+        }
         Spacer(Modifier.height(10.dp))
         Box(
             Modifier
@@ -367,12 +391,12 @@ private fun ModelPickerSheet(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                    .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
             ) {
                 AnimatedVisibility(
                     sheetState.targetState,
-                    enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(),
+                    enter = slideInVertically(MotionTokens.bouncyFinite(LocalReduceMotion.current)) { it } + fadeIn(MotionTokens.fastFinite(LocalReduceMotion.current)),
                     exit = slideOutVertically { it } + fadeOut(),
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
@@ -389,7 +413,7 @@ private fun ModelPickerSheet(
                         .padding(20.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        BasicText(title, style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+                        BasicText(title, style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                         Spacer(Modifier.weight(1f))
                         // STT: refreshes from /models?output_modalities=transcription (item 9).
                         SoftButton(if (busy) "…" else "Refresh", filled = false, onClick = onRefresh)

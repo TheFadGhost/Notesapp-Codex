@@ -83,7 +83,7 @@ fun FindInNoteBar(
             .clip(RoundedCornerShape(tokens.radii.pill))
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AuraGlyph(Glyph.SEARCH, tokens.colors.textSecondary, Modifier.size(16.dp))
@@ -114,7 +114,9 @@ fun FindInNoteBar(
         )
         Spacer(Modifier.width(6.dp))
         FindAction(Glyph.CHEVRON_UP, "Previous match", enabled = matchCount > 0, onClick = onPrev)
+        Spacer(Modifier.width(4.dp))
         FindAction(Glyph.CHEVRON_DOWN, "Next match", enabled = matchCount > 0, onClick = onNext)
+        Spacer(Modifier.width(4.dp))
         FindAction(Glyph.CLOSE, "Close find", enabled = true, onClick = onClose)
     }
 }
@@ -125,7 +127,7 @@ private fun FindAction(glyph: Glyph, label: String, enabled: Boolean, onClick: (
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(32.dp)
+            .size(44.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
             .auraPress(interaction)
             .clickable(interaction, indication = null, enabled = enabled, onClick = onClick)

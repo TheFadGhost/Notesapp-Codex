@@ -93,6 +93,24 @@ object MotionTokens {
     fun <T> settle(reduceMotion: Boolean): AnimationSpec<T> =
         if (reduceMotion) tween(120)
         else spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
+    // --- Named finite timings (council audit: no magic numbers at call sites) -------
+    /** Shared-axis tab transition (AppShell). Values preserved from the tuned v2 shell. */
+    const val TabSlideInMs = 220
+    const val TabSlideOutMs = 200
+    const val TabFadeInMs = 180
+    const val TabFadeOutMs = 140
+    const val TabReducedFadeMs = 120
+
+    /** Theme morph + circular reveal (ThemeSwitch). */
+    const val ThemeMorphMs = 320
+    const val ThemeRevealMs = 420
+    const val ThemeRevealFadeMs = 120
+
+    /** Bottom-sheet scrim/drop idiom shared by the voice and What's-new sheets. */
+    const val SheetScrimInMs = 220
+    const val SheetScrimOutMs = 160
+    const val SheetDropMs = 200
 }
 
 /**

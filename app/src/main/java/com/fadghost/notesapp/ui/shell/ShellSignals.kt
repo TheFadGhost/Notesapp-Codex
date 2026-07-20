@@ -41,4 +41,4 @@ object ShellSignals {
     }
 }
 
-enum class ShellSignal { SCROLL_TOP, FAB_PRIMARY }
+enum class ShellSignal { SCROLL_TOP, FAB_PRIMARY, FOCUS_AI_SETTINGS }

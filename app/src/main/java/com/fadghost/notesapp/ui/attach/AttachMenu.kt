@@ -40,6 +40,7 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 
 /**
  * Compact source menu for adding an attachment (M-A ingest): Photo (system photo
@@ -57,20 +58,21 @@ fun AttachMenu(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     val reduceMotion = LocalReduceMotion.current
 
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.TopCenter
         ) {
             AnimatedVisibility(
                 visible = visible,
                 enter = if (reduceMotion) fadeIn()
-                else scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                else scaleIn(MotionTokens.bouncyFinite(false)) + fadeIn(MotionTokens.fastFinite(false)),
                 exit = if (reduceMotion) fadeOut() else scaleOut() + fadeOut()
             ) {
                 Column(

@@ -48,6 +48,7 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +71,7 @@ private fun WhatsNewSheet(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler { onDismiss() }
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val haptics = rememberAuraHaptics()
@@ -78,15 +80,15 @@ private fun WhatsNewSheet(
     val scrimAlpha = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        launch { scrimAlpha.animateTo(1f, tween(220)) }
+        launch { scrimAlpha.animateTo(1f, tween(MotionTokens.SheetScrimInMs)) }
         offsetY.animateTo(0f, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow))
     }
 
     fun close() {
         haptics.confirm()
         scope.launch {
-            launch { scrimAlpha.animateTo(0f, tween(180)) }
-            offsetY.animateTo(sheetHeightPx, tween(220))
+            launch { scrimAlpha.animateTo(0f, tween(MotionTokens.SheetDropMs)) }
+            offsetY.animateTo(sheetHeightPx, tween(MotionTokens.SheetScrimInMs))
             onDismiss()
         }
     }
@@ -96,7 +98,7 @@ private fun WhatsNewSheet(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = scrimAlpha.value }
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -118,14 +120,7 @@ private fun WhatsNewSheet(
                 .padding(bottom = 28.dp)
         ) {
             Spacer(Modifier.height(12.dp))
-            Box(
-                Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(40.dp)
-                    .height(5.dp)
-                    .clip(CircleShape)
-                    .background(tokens.colors.textSecondary.copy(alpha = 0.5f))
-            )
+            com.fadghost.notesapp.ui.components.GrabHandle(Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(16.dp))
             Row(
                 Modifier.padding(horizontal = 24.dp),
@@ -133,7 +128,7 @@ private fun WhatsNewSheet(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 AuraGlyph(Glyph.SPARKLE, tokens.colors.accent, Modifier.size(24.dp))
-                BasicText("What's new", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                BasicText("What's new", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
             }
             Spacer(Modifier.height(12.dp))
             Column(

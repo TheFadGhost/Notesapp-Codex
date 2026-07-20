@@ -1,6 +1,7 @@
 package com.fadghost.notesapp.ui.ai
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -43,6 +44,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import com.fadghost.notesapp.data.ai.parse.ActionType
 import com.fadghost.notesapp.data.ai.parse.ProposedAction
@@ -52,6 +55,8 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
@@ -77,19 +82,23 @@ fun ExtractSheet(
     onAcceptAll: () -> Unit,
     onDismiss: () -> Unit,
     currentModel: String = "",
-    onSwapModel: ((String) -> Unit)? = null
+    onSwapModel: ((String) -> Unit)? = null,
+    /** Re-issues the failed request. Defaults to dismiss for callers without a retry path. */
+    onRetry: (() -> Unit)? = null
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = state.active) { onDismiss() }
+    val reduceMotion = LocalReduceMotion.current
     AnimatedVisibility(state.active, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
         ) {
             AnimatedVisibility(
                 state.active,
-                enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(),
+                enter = slideInVertically(MotionTokens.bouncyFinite(reduceMotion)) { it } + fadeIn(MotionTokens.fastFinite(reduceMotion)),
                 exit = slideOutVertically { it } + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
@@ -106,7 +115,7 @@ fun ExtractSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AuraGlyph(Glyph.CALENDAR, tokens.colors.accent, Modifier.size(22.dp))
                         Spacer(Modifier.size(10.dp))
-                        BasicText("Extracted actions", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                        BasicText("Extracted actions", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                         Spacer(Modifier.weight(1f))
                         if (state.cards.isNotEmpty()) {
                             BasicText("swipe or tap", style = AuraType.label.copy(color = tokens.colors.textSecondary))
@@ -114,22 +123,37 @@ fun ExtractSheet(
                     }
                     Spacer(Modifier.size(12.dp))
 
-                    when {
-                        state.loading -> Loading()
-                        state.error != null || state.rawError != null -> ErrorBlock(
+                    // Loading → error → empty → cards crossfade instead of teleporting
+                    // (council motion audit).
+                    val phase = when {
+                        state.loading -> ExtractPhase.LOADING
+                        state.error != null || state.rawError != null -> ExtractPhase.ERROR
+                        state.cards.isEmpty() -> ExtractPhase.EMPTY
+                        else -> ExtractPhase.CARDS
+                    }
+                    androidx.compose.animation.Crossfade(
+                        targetState = phase,
+                        animationSpec = MotionTokens.mediumFinite(reduceMotion),
+                        label = "extractPhase"
+                    ) { p -> when (p) {
+                        ExtractPhase.LOADING -> Loading()
+                        ExtractPhase.ERROR -> ErrorBlock(
                             friendly = state.error,
                             raw = state.rawError,
-                            onRetry = onDismiss,
+                            onRetry = onRetry ?: onDismiss,
                             currentModel = currentModel,
                             onSwapModel = onSwapModel
                         )
-                        state.cards.isEmpty() -> BasicText(
+                        ExtractPhase.EMPTY -> BasicText(
                             if (state.acceptedCount > 0) "All set — ${state.acceptedCount} added."
                             else "No actions found in this note.",
                             style = AuraType.body.copy(color = tokens.colors.textSecondary)
                         )
-                        else -> Column(
-                            Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                        ExtractPhase.CARDS -> Column(
+                            Modifier
+                                .heightIn(max = 420.dp)
+                                .verticalScroll(rememberScrollState())
+                                .animateContentSize(MotionTokens.mediumFinite(reduceMotion)),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             state.warnings.forEach { WarningLine(it) }
@@ -145,7 +169,7 @@ fun ExtractSheet(
                                 )
                             }
                         }
-                    }
+                    } }
 
                     Spacer(Modifier.size(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,6 +183,9 @@ fun ExtractSheet(
     }
 }
 
+/** The four visual states of the sheet body — crossfaded, never teleported. */
+private enum class ExtractPhase { LOADING, ERROR, EMPTY, CARDS }
+
 @Composable
 private fun ActionCardItem(
     card: ExtractCard,
@@ -170,6 +197,7 @@ private fun ActionCardItem(
     onRevise: (String) -> Unit
 ) {
     val tokens = Aura.tokens
+    val cardReduceMotion = LocalReduceMotion.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val offsetX = remember { Animatable(0f) }
@@ -189,9 +217,9 @@ private fun ActionCardItem(
                         onDragEnd = {
                             scope.launch {
                                 when {
-                                    offsetX.value > threshold -> { offsetX.animateTo(1200f); onAccept() }
-                                    offsetX.value < -threshold -> { offsetX.animateTo(-1200f); onReject() }
-                                    else -> offsetX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                    offsetX.value > threshold -> { offsetX.animateTo(1200f, MotionTokens.mediumFinite(cardReduceMotion)); onAccept() }
+                                    offsetX.value < -threshold -> { offsetX.animateTo(-1200f, MotionTokens.mediumFinite(cardReduceMotion)); onReject() }
+                                    else -> offsetX.animateTo(0f, MotionTokens.settle(cardReduceMotion))
                                 }
                             }
                         }
@@ -226,11 +254,18 @@ private fun ActionCardItem(
                 OtherPanel(onSend = { instr -> showOther = false; onRevise(instr) }, onCancel = { showOther = false })
             } else {
                 Spacer(Modifier.size(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CardAction(Glyph.CHECK, tokens.colors.accent, onAccept)
-                    CardAction(Glyph.CLOSE, tokens.colors.danger, onReject)
-                    CardAction(Glyph.HEADING, tokens.colors.textSecondary, onBeginEdit)
+                // Accept lives alone on the right; Reject stays with the neutral actions on
+                // the left so opposite verbs are never adjacent twins (council thumb audit).
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CardAction(Glyph.CLOSE, tokens.colors.danger, label = "Reject", onClick = onReject)
+                    CardAction(Glyph.PENCIL, tokens.colors.textSecondary, label = "Edit", onClick = onBeginEdit)
                     TextAction("Other") { showOther = true }
+                    Spacer(Modifier.weight(1f))
+                    CardAction(Glyph.CHECK, tokens.colors.accent, label = "Accept", onClick = onAccept)
                 }
             }
         }
@@ -331,12 +366,13 @@ private fun TypeBadge(type: ActionType) {
 }
 
 @Composable
-private fun CardAction(glyph: Glyph, color: Color, onClick: () -> Unit) {
+private fun CardAction(glyph: Glyph, color: Color, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(38.dp)
+            .size(44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.sm))
             .auraPress(interaction)
             .background(tokens.colors.surface)
@@ -384,7 +420,7 @@ private fun ErrorBlock(
     var showDetails by remember { mutableStateOf(false) }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AuraGlyph(Glyph.CLOSE, tokens.colors.danger, Modifier.size(18.dp))
+            AuraGlyph(Glyph.WARNING, tokens.colors.danger, Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             BasicText("That didn't work", style = AuraType.body.copy(color = tokens.colors.textPrimary))
         }

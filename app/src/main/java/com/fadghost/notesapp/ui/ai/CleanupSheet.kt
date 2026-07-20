@@ -41,6 +41,8 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Before/after Clean-up sheet (PLAN.md §5 — "before/after toggle, NOT a line
@@ -59,6 +61,8 @@ fun CleanupSheet(
     onSwapModel: ((String) -> Unit)? = null
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = state.active) { onKeepOriginal() }
+    val reduceMotion = LocalReduceMotion.current
     // Success haptic when a clean-up finishes streaming (PLAN.md §10 — AI done).
     val haptics = rememberAuraHaptics()
     LaunchedEffect(state.done) {
@@ -73,7 +77,7 @@ fun CleanupSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -82,7 +86,7 @@ fun CleanupSheet(
         ) {
             AnimatedVisibility(
                 visible = state.active,
-                enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(),
+                enter = slideInVertically(MotionTokens.bouncyFinite(reduceMotion)) { it } + fadeIn(MotionTokens.fastFinite(reduceMotion)),
                 exit = slideOutVertically { it } + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
@@ -102,7 +106,7 @@ fun CleanupSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AuraGlyph(Glyph.SPARKLE, tokens.colors.accent, Modifier.size(22.dp))
                         Spacer(Modifier.size(10.dp))
-                        BasicText(state.title, style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                        BasicText(state.title, style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                         Spacer(Modifier.weight(1f))
                         if (state.streaming) {
                             // Folio's rotating thinking line (V3-DELIGHT §3A), not "streaming…".
@@ -191,7 +195,7 @@ private fun SegItem(label: String, selected: Boolean, modifier: Modifier, onClic
             .auraPress(interaction)
             .background(if (selected) tokens.colors.accent else Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(vertical = 9.dp),
+            .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         BasicText(

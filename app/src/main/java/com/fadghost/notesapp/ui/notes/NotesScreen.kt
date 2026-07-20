@@ -44,6 +44,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.ui.components.AuraEmptyState
 import com.fadghost.notesapp.ui.components.AuraGlyph
@@ -61,6 +63,7 @@ import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
 import com.fadghost.notesapp.ui.theme.auraSheetShadow
 import com.fadghost.notesapp.ui.theme.auraTopHighlight
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 
 /**
@@ -158,6 +161,7 @@ fun NotesScreen(
                             .auraPress(gridToggleInteraction, tint = true)
                             .background(tokens.colors.surface)
                             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+                            .semantics { contentDescription = if (isGrid) "Switch to list view" else "Switch to grid view" }
                             .clickable(
                                 interactionSource = gridToggleInteraction,
                                 indication = null,
@@ -181,7 +185,15 @@ fun NotesScreen(
             )
             Spacer(Modifier.height(12.dp))
 
-            if (notes.isEmpty()) {
+            // Crossfade the empty <-> grid swap on the primary surface (was instant).
+            androidx.compose.animation.Crossfade(
+                targetState = notes.isEmpty(),
+                animationSpec = com.fadghost.notesapp.ui.theme.MotionTokens.mediumFinite(
+                    com.fadghost.notesapp.ui.theme.LocalReduceMotion.current
+                ),
+                label = "notesContent"
+            ) { listEmpty ->
+            if (listEmpty) {
                 EmptyNotes(
                     filter = filter,
                     searching = query.isNotBlank(),
@@ -213,6 +225,7 @@ fun NotesScreen(
                         )
                     }
                 }
+            }
             }
         }
 
@@ -328,15 +341,16 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
         if (query.isNotEmpty()) {
             Box(
                 Modifier
-                    .size(24.dp)
+                    .size(44.dp)
                     .clip(RoundedCornerShape(tokens.radii.pill))
+                    .semantics { contentDescription = "Clear search" }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = { onQueryChange("") }
                     ),
                 contentAlignment = Alignment.Center
-            ) { AuraGlyph(Glyph.CLOSE, tokens.colors.textSecondary, Modifier.size(14.dp)) }
+            ) { AuraGlyph(Glyph.CLOSE, tokens.colors.textSecondary, Modifier.size(16.dp)) }
         }
     }
 }
@@ -370,10 +384,20 @@ private fun EmptyNotes(filter: NoteFilter, searching: Boolean, onCreate: () -> U
 @Composable
 private fun DeleteForeverOverlay(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val tokens = Aura.tokens
+    // Back on a destructive confirm always cancels, never confirms.
+    androidx.activity.compose.BackHandler { onDismiss() }
+    var entranceIn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entranceIn = true }
+    val entranceAlpha by androidx.compose.animation.core.animateFloatAsState(
+        if (entranceIn) 1f else 0f,
+        com.fadghost.notesapp.ui.theme.MotionTokens.fast(com.fadghost.notesapp.ui.theme.LocalReduceMotion.current),
+        label = "overlayEntrance"
+    )
     Box(
         Modifier
+            .graphicsLayer { alpha = entranceAlpha }
             .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = tokens.elevation.scrim))
+            .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -397,7 +421,7 @@ private fun DeleteForeverOverlay(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                 )
                 .padding(20.dp)
         ) {
-            BasicText("Delete forever?", style = AuraType.titleLg.copy(color = tokens.colors.textPrimary))
+            BasicText("Delete forever?", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
             Spacer(Modifier.height(6.dp))
             BasicText(
                 "This note will be permanently removed. This can't be undone.",

@@ -36,6 +36,9 @@ import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import com.fadghost.notesapp.ui.theme.MotionTokens
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.animateFloatAsState
 
 data class ContextMenuItem(
     val glyph: Glyph,
@@ -54,10 +57,20 @@ fun NoteContextMenu(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler { onDismiss() }
+    // Entrance fade (council: overlays teleported in with zero motion).
+    var entranceIn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entranceIn = true }
+    val entranceAlpha by animateFloatAsState(
+        if (entranceIn) 1f else 0f,
+        MotionTokens.fast(LocalReduceMotion.current), label = "overlayEntrance"
+    )
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+            .graphicsLayer { alpha = entranceAlpha }
+            .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -110,7 +123,7 @@ private fun MenuRow(item: ContextMenuItem, index: Int, onDismiss: () -> Unit) {
                 indication = null,
                 onClick = { item.onClick(); onDismiss() }
             )
-            .padding(horizontal = 18.dp, vertical = 13.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start
     ) {

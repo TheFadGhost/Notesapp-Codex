@@ -213,7 +213,7 @@ fun CapturePanel(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { this.alpha = alpha.value }
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null

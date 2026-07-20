@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -115,6 +116,16 @@ fun AnnotateScreen(
     val redo = remember { mutableStateListOf<Snapshot>() }
     var editing by remember { mutableStateOf<TextItem?>(null) }
     var contentPx by remember { mutableStateOf(IntOffset(0, 0)) } // width,height in px
+    // Leaving with unsaved marks needs a confirm — Back or X silently destroying
+    // drawn work was the council's top interaction defect.
+    var confirmDiscard by remember { mutableStateOf(false) }
+
+    fun requestClose() {
+        if (strokes.isNotEmpty() || texts.isNotEmpty()) confirmDiscard = true else onCancel()
+    }
+    androidx.activity.compose.BackHandler {
+        if (confirmDiscard) confirmDiscard = false else requestClose()
+    }
 
     fun pushHistory() { undo.add(Snapshot(strokes, texts)); redo.clear() }
     fun doUndo() {
@@ -139,11 +150,11 @@ fun AnnotateScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TopIcon(Glyph.CLOSE) { onCancel() }
+            TopIcon(Glyph.CLOSE, label = "Cancel annotation") { requestClose() }
             Spacer(Modifier.weight(1f))
-            TopIcon(Glyph.UNDO, enabled = undo.isNotEmpty()) { doUndo() }
+            TopIcon(Glyph.UNDO, label = "Undo", enabled = undo.isNotEmpty()) { doUndo() }
             Spacer(Modifier.width(4.dp))
-            TopIcon(Glyph.REDO, enabled = redo.isNotEmpty()) { doRedo() }
+            TopIcon(Glyph.REDO, label = "Redo", enabled = redo.isNotEmpty()) { doRedo() }
             Spacer(Modifier.width(10.dp))
             DoneButton {
                 val b = base
@@ -288,6 +299,42 @@ fun AnnotateScreen(
             }
         )
     }
+
+    // Discard-annotations confirm — guards Back/X once real marks exist.
+    if (confirmDiscard) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
+                .clickable(remember { MutableInteractionSource() }, indication = null) { confirmDiscard = false },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                Modifier
+                    .padding(horizontal = 36.dp)
+                    .clip(RoundedCornerShape(tokens.radii.lg))
+                    .background(tokens.colors.surface)
+                    .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.lg))
+                    .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
+                    .padding(22.dp)
+            ) {
+                BasicText(
+                    "Discard annotations?",
+                    style = AuraType.titleSm.copy(color = tokens.colors.textPrimary)
+                )
+                Spacer(Modifier.height(6.dp))
+                BasicText(
+                    "Your drawing and text on this image will be lost.",
+                    style = AuraType.body.copy(color = tokens.colors.textSecondary)
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    com.fadghost.notesapp.ui.ai.SoftButton("Keep editing", filled = true, onClick = { confirmDiscard = false })
+                    com.fadghost.notesapp.ui.ai.SoftButton("Discard", filled = false, onClick = { confirmDiscard = false; onCancel() })
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -340,10 +387,10 @@ private fun ToolBar(
     ) {
         // Tools + widths.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ToolButton(Glyph.PENCIL, tool == Tool.PEN) { onTool(Tool.PEN) }
-            ToolButton(Glyph.BOLD, tool == Tool.HIGHLIGHTER) { onTool(Tool.HIGHLIGHTER) }
-            ToolButton(Glyph.CLOSE, tool == Tool.ERASER) { onTool(Tool.ERASER) }
-            ToolButton(Glyph.HEADING, tool == Tool.TEXT) { onTool(Tool.TEXT) }
+            ToolButton(Glyph.PENCIL, tool == Tool.PEN, label = "Pen") { onTool(Tool.PEN) }
+            ToolButton(Glyph.HIGHLIGHTER, tool == Tool.HIGHLIGHTER, label = "Highlighter") { onTool(Tool.HIGHLIGHTER) }
+            ToolButton(Glyph.ERASER, tool == Tool.ERASER, label = "Eraser") { onTool(Tool.ERASER) }
+            ToolButton(Glyph.TEXT, tool == Tool.TEXT, label = "Text") { onTool(Tool.TEXT) }
             Spacer(Modifier.weight(1f))
             if (tool == Tool.PEN || tool == Tool.HIGHLIGHTER) {
                 listOf(2f, 4f, 9f).forEach { w ->
@@ -363,12 +410,13 @@ private fun ToolBar(
 }
 
 @Composable
-private fun ToolButton(glyph: Glyph, selected: Boolean, onClick: () -> Unit) {
+private fun ToolButton(glyph: Glyph, selected: Boolean, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(48.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.md))
             .auraPress(interaction, tint = true)
             .background(if (selected) tokens.colors.accent.copy(alpha = 0.16f) else Color.Transparent)
@@ -385,8 +433,9 @@ private fun WidthDot(w: Float, selected: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(36.dp)
+            .size(44.dp)
             .clip(CircleShape)
+            .semantics { contentDescription = "Stroke width" }
             .auraPress(interaction, tint = true)
             .background(if (selected) tokens.colors.accent.copy(alpha = 0.16f) else Color.Transparent)
             .clickable(interaction, indication = null, onClick = onClick),
@@ -400,29 +449,38 @@ private fun WidthDot(w: Float, selected: Boolean, onClick: () -> Unit) {
 private fun Swatch(c: Color, selected: Boolean, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
+    // 44dp hit area around the 32dp swatch (council thumb audit).
     Box(
         Modifier
-            .size(32.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .auraPress(interaction)
-            .background(c)
-            .border(
-                width = if (selected) 3.dp else 1.dp,
-                color = if (selected) tokens.colors.accent else tokens.colors.outline,
-                shape = CircleShape
-            )
             .clickable(interaction, indication = null, onClick = onClick)
-            .semantics { contentDescription = "Colour" }
-    )
+            .semantics { contentDescription = "Colour" },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(c)
+                .border(
+                    width = if (selected) 3.dp else 1.dp,
+                    color = if (selected) tokens.colors.accent else tokens.colors.outline,
+                    shape = CircleShape
+                )
+        )
+    }
 }
 
 @Composable
-private fun TopIcon(glyph: Glyph, enabled: Boolean = true, onClick: () -> Unit) {
+private fun TopIcon(glyph: Glyph, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.pill))
             .auraPress(interaction)
             .clickable(interaction, indication = null, enabled = enabled, onClick = onClick),
@@ -438,7 +496,7 @@ private fun DoneButton(onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .height(40.dp)
+            .height(44.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
             .auraPress(interaction, tint = true)
             .background(tokens.colors.accent)
@@ -457,7 +515,8 @@ private fun TextInputCard(initial: String, onDone: (String) -> Unit, onDismiss: 
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+            .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
+            .imePadding()
             .clickable(remember { MutableInteractionSource() }, null) { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
@@ -471,7 +530,7 @@ private fun TextInputCard(initial: String, onDone: (String) -> Unit, onDismiss: 
                 .clickable(remember { MutableInteractionSource() }, null) {}
                 .padding(20.dp)
         ) {
-            BasicText("Add text", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+            BasicText("Add text", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
             Spacer(Modifier.height(12.dp))
             Box(
                 Modifier

@@ -213,6 +213,7 @@ private fun NotesRoot(viewModel: MainViewModel = hiltViewModel()) {
                     onSelectThemeMode = viewModel::setThemeMode
                 )
                 WhatsNewHost()
+                com.fadghost.notesapp.ui.whatsnew.WelcomeHost()
             }
         }
     }

@@ -28,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -57,6 +58,10 @@ class AskViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(AskUiState())
     val state: StateFlow<AskUiState> = _state.asStateFlow()
+
+    /** Whether an OpenRouter key exists — the empty state teaches the requirement up front. */
+    val hasKey: kotlinx.coroutines.flow.StateFlow<Boolean> =
+        aiRepository.hasKey.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), true)
 
     private var sequence = 1L
     private var cardSequence = 1L
@@ -184,8 +189,22 @@ class AskViewModel @Inject constructor(
 
     // --- EXTRACT_ACTIONS confirm flow ------------------------------------------
 
+    private var lastExtractTranscript: String = ""
+    private var lastMemoryFact: String = ""
+
+    /** Real retry for a failed extract confirmation (the button used to just dismiss). */
+    fun retryExtract() {
+        if (lastExtractTranscript.isNotBlank()) startExtractConfirmation(lastExtractTranscript)
+    }
+
+    /** Real retry for a failed memory confirmation. */
+    fun retryMemory() {
+        if (lastMemoryFact.isNotBlank()) startMemoryConfirmation(lastMemoryFact)
+    }
+
     private fun startExtractConfirmation(transcript: String) {
         if (transcript.isBlank()) return
+        lastExtractTranscript = transcript
         insertedRows.clear()
         _state.value = _state.value.copy(extract = ExtractState(active = true, loading = true))
         actionJob?.cancel()
@@ -323,6 +342,7 @@ class AskViewModel @Inject constructor(
     // --- SAVE_MEMORY confirm flow ----------------------------------------------
 
     private fun startMemoryConfirmation(fact: String) {
+        lastMemoryFact = fact
         _state.value = _state.value.copy(
             memory = MemoryState(active = true, loading = true, thinking = "Noting what matters\u2026")
         )

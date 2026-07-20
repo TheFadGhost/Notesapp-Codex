@@ -44,6 +44,7 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import java.util.Locale
 
 /**
@@ -65,19 +66,20 @@ fun AttachmentPopover(
     val tokens = Aura.tokens
     val reduceMotion = LocalReduceMotion.current
     val visible = attachment != null
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
 
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {
             AnimatedVisibility(
                 visible = visible,
                 enter = if (reduceMotion) fadeIn()
-                else scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                else scaleIn(MotionTokens.bouncyFinite(false)) + fadeIn(MotionTokens.fastFinite(false)),
                 exit = if (reduceMotion) fadeOut() else scaleOut() + fadeOut()
             ) {
                 if (attachment != null) {

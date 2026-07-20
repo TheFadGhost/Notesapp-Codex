@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,8 @@ import com.fadghost.notesapp.ui.ai.SoftButton
 import com.fadghost.notesapp.ui.components.AuraDateTimePicker
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -55,21 +58,29 @@ fun QuickReminderDialog(
     viewModel: QuickReminderViewModel = hiltViewModel()
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     val zone = ZoneId.systemDefault()
-    var title by remember { mutableStateOf("") }
-    var dt by remember { mutableStateOf(LocalDateTime.now(zone).plusHours(1).withSecond(0).withNano(0)) }
+    // Saveable: a half-filled reminder must survive rotation / process death.
+    var title by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var dt by androidx.compose.runtime.saveable.rememberSaveable(
+        stateSaver = androidx.compose.runtime.saveable.Saver(
+            save = { it.toString() },
+            restore = { LocalDateTime.parse(it) }
+        )
+    ) { mutableStateOf(LocalDateTime.now(zone).plusHours(1).withSecond(0).withNano(0)) }
 
     AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
+                .imePadding()
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {
             AnimatedVisibility(
                 visible,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                enter = scaleIn(MotionTokens.bouncyFinite(LocalReduceMotion.current)) + fadeIn(MotionTokens.fastFinite(LocalReduceMotion.current)),
                 exit = scaleOut() + fadeOut()
             ) {
                 Column(
@@ -81,7 +92,7 @@ fun QuickReminderDialog(
                         .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
                         .padding(22.dp)
                 ) {
-                    BasicText("Quick reminder", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                    BasicText("Quick reminder", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                     Spacer(Modifier.size(14.dp))
                     Box(
                         Modifier
@@ -113,7 +124,14 @@ fun QuickReminderDialog(
                         Spacer(Modifier.size(10.dp))
                         BasicText(
                             "That time has already passed — pick a time in the future.",
-                            style = AuraType.bodySm.copy(color = tokens.colors.danger)
+                            style = AuraType.label.copy(color = tokens.colors.danger)
+                        )
+                    }
+                    if (title.isBlank()) {
+                        Spacer(Modifier.size(10.dp))
+                        BasicText(
+                            "Give it a title to create. It lands in your Calendar with an alarm.",
+                            style = AuraType.label.copy(color = tokens.colors.textSecondary)
                         )
                     }
 

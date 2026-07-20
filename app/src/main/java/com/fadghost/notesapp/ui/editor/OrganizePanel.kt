@@ -44,8 +44,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.components.AuraGlyph
+import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.FlowChips
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.PlainChip
@@ -75,6 +78,7 @@ fun OrganizePanel(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler { onDismiss() }
     val density = LocalDensity.current
     var tagInput by remember { mutableStateOf(TextFieldValue("")) }
     var colorIndex by remember { mutableIntStateOf(0) }
@@ -106,7 +110,7 @@ fun OrganizePanel(
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -151,7 +155,7 @@ fun OrganizePanel(
                     .verticalScroll(rememberScrollState())
                     .padding(18.dp)
             ) {
-                BasicText("Organize", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                BasicText("Organize", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                 Spacer(Modifier.height(2.dp))
                 BasicText(summary, style = AuraType.label.copy(color = tokens.colors.textSecondary))
 
@@ -248,12 +252,15 @@ private fun CreateRow(
 
 @Composable
 private fun ColorCycler(colorIndex: Int, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(48.dp)
             .clip(CircleShape)
+            .semantics { contentDescription = "Change color" }
+            .auraPress(interaction)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick
             ),
@@ -266,13 +273,16 @@ private fun ColorCycler(colorIndex: Int, onClick: () -> Unit) {
 @Composable
 private fun AddButton(enabled: Boolean, onClick: () -> Unit) {
     val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(48.dp)
             .clip(CircleShape)
+            .semantics { contentDescription = "Create tag" }
+            .auraPress(interaction)
             .background(tokens.colors.accent.copy(alpha = if (enabled) 0.16f else 0.06f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 enabled = enabled,
                 onClick = onClick

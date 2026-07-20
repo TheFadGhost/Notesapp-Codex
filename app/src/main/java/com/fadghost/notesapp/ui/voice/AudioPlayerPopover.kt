@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.data.audio.AudioStorage
 import com.fadghost.notesapp.data.db.entity.AudioAttachment
 import com.fadghost.notesapp.ui.ai.SoftButton
@@ -53,6 +55,7 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import kotlinx.coroutines.delay
 
 /**
@@ -68,19 +71,21 @@ fun AudioPlayerPopover(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    val reduceMotion = LocalReduceMotion.current
     val visible = attachment != null
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
 
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {
             AnimatedVisibility(
                 visible = visible,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                enter = scaleIn(MotionTokens.bouncyFinite(reduceMotion)) + fadeIn(MotionTokens.fastFinite(reduceMotion)),
                 exit = scaleOut() + fadeOut()
             ) {
                 if (attachment != null) {
@@ -129,7 +134,7 @@ private fun PlayerCard(
             .padding(22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        BasicText("Voice note", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText("Voice note", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(4.dp))
         BasicText(
             "${formatTime(attachment.durationMs)} · ${AudioStorage.formatSize(attachment.sizeBytes)}",
@@ -150,6 +155,7 @@ private fun PlayerCard(
                 Modifier
                     .size(48.dp)
                     .clip(CircleShape)
+                    .semantics { contentDescription = if (playing) "Pause" else "Play" }
                     .auraPress(playInteraction, tint = true)
                     .background(tokens.colors.accent)
                     .clickable(interactionSource = playInteraction, indication = null) {
@@ -157,14 +163,11 @@ private fun PlayerCard(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (playing) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(Modifier.size(width = 5.dp, height = 18.dp).background(tokens.colors.background))
-                        Box(Modifier.size(width = 5.dp, height = 18.dp).background(tokens.colors.background))
-                    }
-                } else {
-                    AuraGlyph(Glyph.CHEVRON, tokens.colors.background, Modifier.size(22.dp))
-                }
+                AuraGlyph(
+                    if (playing) Glyph.PAUSE else Glyph.PLAY,
+                    tokens.colors.background,
+                    Modifier.size(22.dp)
+                )
             }
             Spacer(Modifier.size(8.dp))
             // +10s skip (IDEAS #32).
@@ -213,9 +216,26 @@ private fun PlayerCard(
             style = AuraType.label.copy(color = tokens.colors.textSecondary, textAlign = TextAlign.Center)
         )
         Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SoftButton("Close", filled = false, onClick = onDismiss)
-            SoftButton("Delete audio", filled = true, onClick = { controller.release(); onDelete(attachment.id) })
+        // Delete is irreversible and used to sit accent-filled beside Close (council G1):
+        // now danger-styled, two-step, and Close carries the primary fill.
+        var confirmDeleteAudio by remember(attachment.id) { mutableStateOf(false) }
+        if (confirmDeleteAudio) {
+            BasicText(
+                "Delete this recording forever?",
+                style = AuraType.label.copy(color = tokens.colors.danger)
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            SoftButton("Close", filled = true, onClick = onDismiss)
+            if (confirmDeleteAudio) {
+                SoftButton("Keep", filled = false, onClick = { confirmDeleteAudio = false })
+                SoftButton("Delete", filled = false, danger = true, onClick = {
+                    controller.release(); onDelete(attachment.id)
+                })
+            } else {
+                SoftButton("Delete audio", filled = false, danger = true, onClick = { confirmDeleteAudio = true })
+            }
         }
     }
 }
@@ -227,13 +247,13 @@ private fun Scrubber(fraction: Float, onSeek: (Float) -> Unit) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
-        animationSpec = tween(if (reduceMotion) 0 else 100),
+        animationSpec = MotionTokens.press(reduceMotion),
         label = "scrubberPressScale"
     )
     Box(
         Modifier
             .fillMaxWidth()
-            .height(24.dp)
+            .height(44.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -275,7 +295,7 @@ private fun SkipButton(label: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(40.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .auraPress(interaction)
             .background(tokens.colors.accent.copy(alpha = 0.12f))

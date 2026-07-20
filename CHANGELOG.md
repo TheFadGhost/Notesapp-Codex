@@ -6,6 +6,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses simple date-tagged releases rather than strict SemVer
 (it's a sideloaded personal app, not a library).
 
+## [v4.0.0] - 2026-07-20 - The Polish Release
+
+A one-time, full-depth UI/UX audit by a seven-seat design council (first-time user, interaction
+purist, design director, icon/label inspector, motion critic, thumb-zone ergonomist, completeness
+auditor), followed by a fix pass covering every Blocker and Major finding and nearly every Minor.
+
+### Added
+- **Automation webhook**: an optional, off-by-default embedded HTTP server (Ktor CIO, port
+  8765, loopback-only unless you allow local network) lets you hand an AI assistant or any
+  automation tool a bearer key and the WEBHOOK.md manual and have it push commands into the
+  app — create notes, schedule reminders with real alarms, add calendar events and diary
+  entries, append to notes, and read back upcoming reminders. The key is generated on first
+  enable and stored with the same Keystore AES-GCM mechanism as the OpenRouter key; the
+  server only runs while the app is open. Configure it in Settings → Automation.
+- **Nav tab labels**: the floating nav pill shows a small always-visible name under each icon —
+  primary navigation no longer requires a long-press to learn.
+- **First-run welcome**: a one-time WelcomeSheet introduces the five tabs, Folio, and the fact
+  that AI is optional and needs an OpenRouter key (with where to get one). Fresh installs no
+  longer see the update changelog for versions they never used.
+- **OpenRouter explainer**: Settings → AI now says what OpenRouter is, that it's pay-per-use,
+  and links straight to key creation.
+- **AI settings deep-link**: "Open AI settings" (editor no-key popover, Ask empty state) jumps
+  to the Settings tab and scrolls directly to the AI card.
+- **Honest to-do handling**: AI-extracted actions without a date now say "stays in your note"
+  instead of silently vanishing while the app claims success.
+- **Retry everywhere**: failed Clean up / Extract / Add to memory runs surface friendly error
+  copy and a working Retry (editor, Ask, and diary transcript cleanup).
+- **Pre-flight key check for voice ramble**: the mic no longer records a whole session before
+  discovering there's no API key.
+- **New glyphs**: play, pause, eraser, highlighter, send, and warning — each drawn in the house
+  style, each meaning exactly one thing; restore redrawn to stop impersonating share.
+
+### Changed
+- **Back button coverage**: every sheet, popover, overlay and menu now closes on system back,
+  in visual priority order; back from any non-Notes tab returns to Notes; the editor exits
+  cleanly through its close path (no more phantom drafts).
+- **Touch targets**: an app-wide 44dp minimum — buttons, find-bar actions, audio scrubber and
+  skip buttons, calendar done-toggles, month arrows, chips' remove actions, stepper buttons.
+- **Destructive actions**: deleting a voice recording is a two-step confirm with danger styling;
+  discard controls are isolated from their neighbours; danger never wears the primary fill.
+- **Type discipline**: all sheet/dialog titles use one size (titleSm); screen titles alone use
+  titleLg; the legacy `title` alias is gone.
+- **One warm scrim**: a shared warm near-black scrim tint token behind every modal (the cold
+  pure-black veils are gone), including the attachment viewer.
+- **Motion tokens**: tab transitions, theme morphs and sheet entrances now run on named
+  MotionTokens constants; sheets share one springy entrance; list items animate in place
+  (Ask, agenda, diary timeline); everything respects Reduce motion.
+- **Accessibility**: every icon-only control carries a content description (editor top bar,
+  annotate tools, find bar, calendar toggles, snackbar dismiss, date stepper, and more).
+- **Layout rhythm**: sheet edge insets unified, off-grid paddings snapped to the 4dp grid,
+  chip insets matched, section cards consolidated into one shared component.
+- **Diary**: stats card hidden until the first entry exists; cleanup failures show friendly
+  errors; error text uses one consistent style.
+- **Quick reminder**: blank-title state explains what's needed and where the reminder lands.
+
+### Removed
+- Dead code: the unused `TagFolderPicker`, the Settings `PlaceholderRow`, and the `AuraType.title`
+  compatibility alias.
+
 ## [v3.4.0] - 2026-07-20 - Quality of Life
 
 A quality-of-life sweep across the whole app: search inside a note, keep AI spend under a cap,

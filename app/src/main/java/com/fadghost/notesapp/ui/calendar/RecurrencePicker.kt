@@ -71,7 +71,7 @@ private fun androidx.compose.foundation.layout.RowScope.Segment(
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 9.dp),
+            .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         BasicText(label, style = AuraType.label.copy(color = fg))

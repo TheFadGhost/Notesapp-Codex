@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +33,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.components.FlowChips
 import com.fadghost.notesapp.ui.components.Glyph
@@ -41,6 +44,11 @@ import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraAccents
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.animateFloatAsState
 
 /**
  * Manage a single tag (PLAN.md §6): rename, recolour from the accent palette,
@@ -56,6 +64,15 @@ fun TagManagerOverlay(
     onMerge: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
+    androidx.activity.compose.BackHandler { onDismiss() }
+    // Entrance fade (council: overlays teleported in with zero motion).
+    var entranceIn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entranceIn = true }
+    val entranceAlpha by animateFloatAsState(
+        if (entranceIn) 1f else 0f,
+        MotionTokens.fast(LocalReduceMotion.current), label = "overlayEntrance"
+    )
+
     val tokens = Aura.tokens
     var name by remember(tag.id) { mutableStateOf(TextFieldValue(tag.name)) }
     // Inline danger confirms for the two irreversible actions (P2-10).
@@ -65,7 +82,8 @@ fun TagManagerOverlay(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+            .graphicsLayer { alpha = entranceAlpha }
+            .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -110,7 +128,7 @@ fun TagManagerOverlay(
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                SmallAction(Glyph.CHECK) { if (name.text.isNotBlank()) onRename(name.text.trim()) }
+                SmallAction(Glyph.CHECK, label = "Save name") { if (name.text.isNotBlank()) onRename(name.text.trim()) }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -119,23 +137,32 @@ fun TagManagerOverlay(
             FlowChips {
                 AuraAccents.palette.forEach { c ->
                     val dotInteraction = remember { MutableInteractionSource() }
+                    // 44dp hit area around the 28dp swatch (council thumb audit).
                     Box(
                         Modifier
-                            .size(28.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
+                            .semantics { contentDescription = "Tag colour" }
                             .auraPress(dotInteraction)
-                            .background(c)
-                            .border(
-                                width = if (tag.color == c.toArgb()) 2.dp else 0.dp,
-                                color = tokens.colors.textPrimary,
-                                shape = CircleShape
-                            )
                             .clickable(
                                 interactionSource = dotInteraction,
                                 indication = null,
                                 onClick = { onRecolor(c.toArgb()) }
-                            )
-                    )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(c)
+                                .border(
+                                    width = if (tag.color == c.toArgb()) 2.dp else 0.dp,
+                                    color = tokens.colors.textPrimary,
+                                    shape = CircleShape
+                                )
+                        )
+                    }
                 }
             }
 
@@ -219,6 +246,7 @@ private fun DangerConfirm(
             val cancelInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
+                    .heightIn(min = 44.dp)
                     .clip(RoundedCornerShape(tokens.radii.pill))
                     .auraPress(cancelInteraction)
                     .clickable(
@@ -234,6 +262,7 @@ private fun DangerConfirm(
             val confirmInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
+                    .heightIn(min = 44.dp)
                     .clip(RoundedCornerShape(tokens.radii.pill))
                     .auraPress(confirmInteraction, tint = true)
                     .background(tokens.colors.danger)
@@ -251,12 +280,13 @@ private fun DangerConfirm(
 }
 
 @Composable
-private fun SmallAction(glyph: Glyph, onClick: () -> Unit) {
+private fun SmallAction(glyph: Glyph, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.sm))
             .auraPress(interaction, tint = true)
             .background(tokens.colors.accent.copy(alpha = 0.16f))

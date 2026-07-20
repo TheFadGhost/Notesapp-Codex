@@ -329,11 +329,23 @@ class EditorAiViewModel @Inject constructor(
     fun acceptCard(id: Long) {
         val card = _extract.value.cards.firstOrNull { it.id == id } ?: return
         viewModelScope.launch {
-            repo.insertAction(card.action, extractSourceNoteId)?.let { insertedRows += it }
-            _extract.value = _extract.value.copy(
-                cards = _extract.value.cards.filterNot { it.id == id },
-                acceptedCount = _extract.value.acceptedCount + 1
-            )
+            val row = repo.insertAction(card.action, extractSourceNoteId)
+            if (row == null) {
+                // To-dos have no calendar home (locked decision: dateless actions stay in
+                // the note). NEVER report them as "added" — that silent drop was the
+                // council's top completeness defect.
+                _extract.value = _extract.value.copy(
+                    cards = _extract.value.cards.filterNot { it.id == id },
+                    warnings = (_extract.value.warnings +
+                        "\"${card.action.title}\" is a to-do — it stays in your note.").distinct()
+                )
+            } else {
+                insertedRows += row
+                _extract.value = _extract.value.copy(
+                    cards = _extract.value.cards.filterNot { it.id == id },
+                    acceptedCount = _extract.value.acceptedCount + 1
+                )
+            }
             if (_extract.value.cards.isEmpty()) offerUndoAll()
         }
     }
@@ -342,10 +354,20 @@ class EditorAiViewModel @Inject constructor(
         val cards = _extract.value.cards
         if (cards.isEmpty()) return
         viewModelScope.launch {
+            var inserted = 0
+            var todos = 0
             cards.forEach { c ->
-                repo.insertAction(c.action, extractSourceNoteId)?.let { insertedRows += it }
+                val row = repo.insertAction(c.action, extractSourceNoteId)
+                if (row != null) { insertedRows += row; inserted++ } else todos++
             }
-            _extract.value = _extract.value.copy(cards = emptyList(), acceptedCount = _extract.value.acceptedCount + cards.size)
+            _extract.value = _extract.value.copy(
+                cards = emptyList(),
+                acceptedCount = _extract.value.acceptedCount + inserted,
+                warnings = if (todos > 0) {
+                    (_extract.value.warnings +
+                        "$todos to-do${if (todos == 1) "" else "s"} stay in your note (no date).").distinct()
+                } else _extract.value.warnings
+            )
             offerUndoAll()
         }
     }
@@ -481,6 +503,16 @@ class EditorAiViewModel @Inject constructor(
         _extract.value = _extract.value.copy(
             cards = _extract.value.cards.map { if (it.id == id) transform(it) else it }
         )
+    }
+
+    /** Real retry for a failed Extract — re-issues the request (was dismiss-only). */
+    fun retryExtract() {
+        if (extractTextForRun.isNotBlank()) startExtract(extractNoteIdForRun, extractTextForRun)
+    }
+
+    /** Real retry for a failed Add-to-memory — re-issues the request (was dismiss-only). */
+    fun retryMemory() {
+        if (memoryTextForRun.isNotBlank()) startAddToMemory(memoryNoteIdForRun, memoryTextForRun)
     }
 
     // --- Retry with a different model (IDEAS #28) --------------------------------

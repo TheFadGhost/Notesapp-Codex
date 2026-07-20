@@ -37,6 +37,10 @@ class WhatsNewViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val lastSeen = prefs.lastSeenVersion.first()
+            // Fresh install: baseline silently so the NEXT update shows its changelog.
+            if (lastSeen.isBlank() && currentVersion.isNotBlank()) {
+                prefs.setLastSeenVersion(currentVersion)
+            }
             if (ChangelogGate.shouldShow(lastSeen, currentVersion)) {
                 val lines = runCatching {
                     context.resources.openRawResource(R.raw.changelog)

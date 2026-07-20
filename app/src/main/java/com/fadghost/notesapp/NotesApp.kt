@@ -4,6 +4,7 @@ import android.app.Application
 import com.fadghost.notesapp.alarm.EventAlarm
 import com.fadghost.notesapp.alarm.ReminderAlarm
 import com.fadghost.notesapp.data.memory.MemoryRepository
+import com.fadghost.notesapp.data.webhook.WebhookServerController
 import com.fadghost.notesapp.data.work.TrashPurgeWorker
 import com.fadghost.notesapp.notify.NotificationChannels
 import dagger.hilt.android.HiltAndroidApp
@@ -19,6 +20,7 @@ class NotesApp : Application() {
     @Inject lateinit var reminderAlarm: ReminderAlarm
     @Inject lateinit var eventAlarm: EventAlarm
     @Inject lateinit var memoryRepository: MemoryRepository
+    @Inject lateinit var webhookServerController: WebhookServerController
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -38,5 +40,8 @@ class NotesApp : Application() {
         // Memory vault (M-B): files are the source of truth — rebuild the Room mirror in the
         // background if it drifted from the files (e.g. a kill mid-write, or a restore).
         appScope.launch { runCatching { memoryRepository.reconcile() } }
+        // Automation webhook (v4): observe the enable/allow-LAN prefs and run the embedded
+        // HTTP server while the process is alive. No-op until the user enables it in Settings.
+        webhookServerController.bind()
     }
 }

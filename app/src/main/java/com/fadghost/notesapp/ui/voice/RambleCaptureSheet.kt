@@ -78,6 +78,7 @@ fun RambleCaptureSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     onOpenNote: (Long) -> Unit,
+    onOpenAiSettings: () -> Unit = {},
     viewModel: RambleViewModel = hiltViewModel()
 ) {
     if (!visible) return
@@ -191,7 +192,7 @@ fun RambleCaptureSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -226,18 +227,11 @@ fun RambleCaptureSheet(
                 )
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp)
                 .padding(top = 12.dp, bottom = 24.dp)
                 .semantics { paneTitle = "Voice ramble" }
         ) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(40.dp)
-                    .height(5.dp)
-                    .clip(CircleShape)
-                    .background(tokens.colors.textSecondary.copy(alpha = 0.45f))
-            )
+            com.fadghost.notesapp.ui.components.GrabHandle(Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(12.dp))
             RambleHeader(onDismiss)
             Spacer(Modifier.height(14.dp))
@@ -296,7 +290,8 @@ fun RambleCaptureSheet(
                 state.error != null -> RambleStartErrorBody(
                     message = state.error.orEmpty(),
                     onRetry = ::beginCapture,
-                    onDismiss = onDismiss
+                    onDismiss = onDismiss,
+                    onOpenAiSettings = onOpenAiSettings
                 )
 
                 !permissionGranted -> RamblePermissionBody(
@@ -607,7 +602,7 @@ private fun RambleErrorBody(
 ) {
     val tokens = Aura.tokens
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        RambleStatusBadge(Glyph.CLOSE, danger = true)
+        RambleStatusBadge(Glyph.WARNING, danger = true)
         Spacer(Modifier.height(14.dp))
         BasicText("Couldn’t finish", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
@@ -626,10 +621,18 @@ private fun RambleErrorBody(
 }
 
 @Composable
-private fun RambleStartErrorBody(message: String, onRetry: () -> Unit, onDismiss: () -> Unit) {
+private fun RambleStartErrorBody(
+    message: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    onOpenAiSettings: () -> Unit = {}
+) {
     val tokens = Aura.tokens
+    // A missing key can't be fixed by trying again — offer the same deep-link the
+    // editor and Ask use, so all three no-key surfaces share one fix-it path.
+    val missingKey = message.contains("OpenRouter key", ignoreCase = true)
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        RambleStatusBadge(Glyph.CLOSE, danger = true)
+        RambleStatusBadge(Glyph.WARNING, danger = true)
         Spacer(Modifier.height(14.dp))
         BasicText("Couldn’t start recording", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
@@ -637,7 +640,11 @@ private fun RambleStartErrorBody(message: String, onRetry: () -> Unit, onDismiss
         Spacer(Modifier.height(18.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SoftButton("Not now", filled = false, onClick = onDismiss)
-            SoftButton("Try again", filled = true, onClick = onRetry)
+            if (missingKey) {
+                SoftButton("Open AI settings", filled = true, onClick = onOpenAiSettings)
+            } else {
+                SoftButton("Try again", filled = true, onClick = onRetry)
+            }
         }
     }
 }

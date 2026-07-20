@@ -27,7 +27,14 @@ enum class Glyph {
     PIN, ARCHIVE, TRASH, DUPLICATE, FOLDER, TAG, SEARCH, CLOSE, GRID, LIST,
     BOLD, ITALIC, HEADING, CHECKLIST, BULLET, UNDO, REDO, RESTORE, CHECK, PLUS,
     CHEVRON, BACK, MORE, SPARKLE, CALENDAR, CLOCK, CHEVRON_UP, CHEVRON_DOWN,
-    DOCUMENT, BOOK, MIC, IMAGE, PAPERCLIP, SHARE, PENCIL, EXPAND
+    DOCUMENT, BOOK, MIC, IMAGE, PAPERCLIP, SHARE, PENCIL, EXPAND,
+    // Transport + tool + status glyphs added by the council audit: one meaning each,
+    // so CHEVRON stays navigation, CLOSE stays dismiss, CHECK stays confirm.
+    PLAY, PAUSE, ERASER, HIGHLIGHTER, SEND, WARNING,
+    // COPY (clipboard) vs DUPLICATE (twin cards): copying *text out* is not the same
+    // act as duplicating a note. TEXT is the annotate text tool, freeing HEADING for
+    // the formatting toolbar alone.
+    COPY, TEXT
 }
 
 @Composable
@@ -54,7 +61,7 @@ fun AuraGlyph(glyph: Glyph, color: Color, modifier: Modifier = Modifier) {
             Glyph.BULLET -> drawBullet(color, s, st)
             Glyph.UNDO -> drawUndo(color, s, st, mirror = false)
             Glyph.REDO -> drawUndo(color, s, st, mirror = true)
-            Glyph.RESTORE -> drawUndo(color, s, st, mirror = false)
+            Glyph.RESTORE -> drawRestore(color, s, st)
             Glyph.CHECK -> drawCheck(color, s, st)
             Glyph.PLUS -> drawPlus(color, s, st)
             Glyph.CHEVRON -> drawChevron(color, s, st, back = false)
@@ -73,8 +80,114 @@ fun AuraGlyph(glyph: Glyph, color: Color, modifier: Modifier = Modifier) {
             Glyph.SHARE -> drawShare(color, s, st)
             Glyph.PENCIL -> drawPencil(color, s, st)
             Glyph.EXPAND -> drawExpand(color, s, st)
+            Glyph.PLAY -> drawPlay(color, s)
+            Glyph.PAUSE -> drawPause(color, s)
+            Glyph.ERASER -> drawEraser(color, s, st)
+            Glyph.HIGHLIGHTER -> drawHighlighter(color, s, st, heavy)
+            Glyph.SEND -> drawSend(color, s, st)
+            Glyph.WARNING -> drawWarning(color, s, st)
+            Glyph.COPY -> drawCopy(color, s, st)
+            Glyph.TEXT -> drawText(color, s, st)
         }
     }
+}
+
+/** Clipboard with a top clip tab — copying text out, distinct from DUPLICATE's twin cards. */
+private fun DrawScope.drawCopy(c: Color, s: Float, st: Stroke) {
+    roundRect(c, s * 0.28f, s * 0.30f, s * 0.44f, s * 0.46f, s, st)
+    roundRect(c, s * 0.42f, s * 0.24f, s * 0.16f, s * 0.10f, s, st)
+    line(c, s * 0.38f, s * 0.46f, s * 0.62f, s * 0.46f, st)
+    line(c, s * 0.38f, s * 0.58f, s * 0.56f, s * 0.58f, st)
+}
+
+/** Letter T on a baseline — the annotate text tool, freeing HEADING for formatting. */
+private fun DrawScope.drawText(c: Color, s: Float, st: Stroke) {
+    line(c, s * 0.28f, s * 0.28f, s * 0.72f, s * 0.28f, st)
+    line(c, s * 0.50f, s * 0.28f, s * 0.50f, s * 0.70f, st)
+    line(c, s * 0.40f, s * 0.70f, s * 0.60f, s * 0.70f, st)
+}
+
+/** Filled play triangle — the transport convention, distinct from navigation chevrons. */
+private fun DrawScope.drawPlay(c: Color, s: Float) {
+    val p = Path().apply {
+        moveTo(s * 0.38f, s * 0.28f)
+        lineTo(s * 0.74f, s * 0.50f)
+        lineTo(s * 0.38f, s * 0.72f)
+        close()
+    }
+    drawPath(p, c)
+}
+
+/** Two filled pause bars. */
+private fun DrawScope.drawPause(c: Color, s: Float) {
+    drawRoundRect(c, Offset(s * 0.32f, s * 0.28f), Size(s * 0.12f, s * 0.44f), CornerRadius(s * 0.04f, s * 0.04f))
+    drawRoundRect(c, Offset(s * 0.56f, s * 0.28f), Size(s * 0.12f, s * 0.44f), CornerRadius(s * 0.04f, s * 0.04f))
+}
+
+/** Tilted eraser block with a tip split, resting on the line it just cleaned. */
+private fun DrawScope.drawEraser(c: Color, s: Float, st: Stroke) {
+    val body = Path().apply {
+        moveTo(s * 0.30f, s * 0.56f)
+        lineTo(s * 0.56f, s * 0.26f)
+        lineTo(s * 0.74f, s * 0.42f)
+        lineTo(s * 0.48f, s * 0.72f)
+        close()
+    }
+    drawPath(body, c, style = st)
+    line(c, s * 0.38f, s * 0.47f, s * 0.56f, s * 0.63f, st)
+    line(c, s * 0.26f, s * 0.80f, s * 0.66f, s * 0.80f, st)
+}
+
+/** Marker pen with a chisel tip over the heavy stroke it lays down. */
+private fun DrawScope.drawHighlighter(c: Color, s: Float, st: Stroke, heavy: Stroke) {
+    val body = Path().apply {
+        moveTo(s * 0.40f, s * 0.52f)
+        lineTo(s * 0.60f, s * 0.28f)
+        lineTo(s * 0.72f, s * 0.38f)
+        lineTo(s * 0.52f, s * 0.62f)
+        close()
+    }
+    drawPath(body, c, style = st)
+    val tip = Path().apply {
+        moveTo(s * 0.40f, s * 0.52f)
+        lineTo(s * 0.36f, s * 0.66f)
+        lineTo(s * 0.52f, s * 0.62f)
+        close()
+    }
+    drawPath(tip, c, style = st)
+    line(c, s * 0.28f, s * 0.80f, s * 0.68f, s * 0.80f, heavy)
+}
+
+/** Send: a determined up arrow in flight (submit), no tray — SHARE keeps the tray. */
+private fun DrawScope.drawSend(c: Color, s: Float, st: Stroke) {
+    line(c, s * 0.50f, s * 0.74f, s * 0.50f, s * 0.28f, st)
+    val head = Path().apply {
+        moveTo(s * 0.32f, s * 0.44f); lineTo(s * 0.50f, s * 0.26f); lineTo(s * 0.68f, s * 0.44f)
+    }
+    drawPath(head, c, style = st)
+}
+
+/** Rounded warning triangle with an exclamation mark (error/attention states). */
+private fun DrawScope.drawWarning(c: Color, s: Float, st: Stroke) {
+    val tri = Path().apply {
+        moveTo(s * 0.50f, s * 0.22f)
+        lineTo(s * 0.80f, s * 0.74f)
+        lineTo(s * 0.20f, s * 0.74f)
+        close()
+    }
+    drawPath(tri, c, style = st)
+    line(c, s * 0.50f, s * 0.42f, s * 0.50f, s * 0.56f, st)
+    drawCircle(c, st.width * 0.7f, Offset(s * 0.50f, s * 0.65f))
+}
+
+/** Restore: an up arrow lifting out of the archive tray (distinct from UNDO's arc). */
+private fun DrawScope.drawRestore(c: Color, s: Float, st: Stroke) {
+    roundRect(c, s * 0.26f, s * 0.58f, s * 0.48f, s * 0.20f, s, st)
+    line(c, s * 0.50f, s * 0.54f, s * 0.50f, s * 0.24f, st)
+    val head = Path().apply {
+        moveTo(s * 0.38f, s * 0.36f); lineTo(s * 0.50f, s * 0.24f); lineTo(s * 0.62f, s * 0.36f)
+    }
+    drawPath(head, c, style = st)
 }
 
 /** A framed picture: rounded frame, a small sun, and a mountain ridge (attachments). */

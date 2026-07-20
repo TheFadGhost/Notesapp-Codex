@@ -1,5 +1,19 @@
 # What's new
 
+## v4.0.0 — The polish release
+- Automation webhook: hand any AI or tool a key and let it schedule reminders, create notes and more — see WEBHOOK.md.
+- The nav tabs now carry names, not just icons — no more guessing which glyph is which.
+- A proper welcome on first launch introduces the tabs, Folio, and how the optional AI works.
+- The back button finally behaves everywhere: every sheet, menu and overlay closes on back, and back from any tab returns you to Notes.
+- Every icon-only control now speaks its name to screen readers, and everything you can tap meets a comfortable thumb-sized target.
+- Deleting a voice recording now asks first, with delete styled as the dangerous choice — never the shiny primary button.
+- AI extract is honest about to-dos: items without a date stay in your note and say so, instead of pretending they went to the Calendar.
+- Voice ramble checks for your OpenRouter key before you start talking, not after.
+- "Open AI settings" links now land you directly on the AI card, no hunting.
+- Failed AI cleanups, extracts and memory saves explain what went wrong and offer a real Retry.
+- Sheets, menus and popovers share one springy entrance and one warm scrim; every animation respects Reduce motion.
+- Dozens of alignment, spacing and type-size fixes so every sheet, chip and button sits on the same grid.
+
 ## v3.4.0 — Quality of life
 - Find inside a note: tap the search icon in the editor to highlight every match and step through them.
 - Copy text straight out of an image — the viewer's new Copy text pill uses the text already recognised in your photos.

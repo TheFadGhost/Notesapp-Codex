@@ -35,6 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fadghost.notesapp.data.backup.ImportMode
 import com.fadghost.notesapp.data.prefs.ThemeMode
+import com.fadghost.notesapp.ui.components.SectionCard
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.settings.BackupUiState
 import com.fadghost.notesapp.ui.settings.BackupViewModel
@@ -62,11 +65,17 @@ fun SettingsScreen(
     val tokens = Aura.tokens
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
-    // Nav re-tap scrolls Settings back to the top (V2-SPEC item 13).
+    var aiSectionY by remember { mutableStateOf(0) }
+    // Nav re-tap scrolls Settings back to the top (V2-SPEC item 13); the AI deep link
+    // scrolls straight to the AI card so "Open Settings" keeps its promise.
     LaunchedEffect(Unit) {
         ShellSignals.flow.collect { msg ->
-            if (msg.tab == NavTab.SETTINGS && msg.signal == ShellSignal.SCROLL_TOP) {
-                scope.launch { scrollState.animateScrollTo(0) }
+            if (msg.tab != NavTab.SETTINGS) return@collect
+            when (msg.signal) {
+                ShellSignal.SCROLL_TOP -> scope.launch { scrollState.animateScrollTo(0) }
+                ShellSignal.FOCUS_AI_SETTINGS ->
+                    scope.launch { scrollState.animateScrollTo(aiSectionY) }
+                else -> {}
             }
         }
     }
@@ -92,7 +101,11 @@ fun SettingsScreen(
         GroupLabel("Features")
         com.fadghost.notesapp.ui.settings.DiarySettingsSection()
         Spacer(Modifier.height(16.dp))
-        com.fadghost.notesapp.ui.settings.AiSettingsSection()
+        Box(Modifier.onGloballyPositioned { aiSectionY = it.positionInParent().y.toInt() }) {
+            com.fadghost.notesapp.ui.settings.AiSettingsSection()
+        }
+        Spacer(Modifier.height(16.dp))
+        com.fadghost.notesapp.ui.settings.AutomationSettingsSection()
 
         Spacer(Modifier.height(24.dp))
         GroupLabel("Your data")
@@ -324,27 +337,6 @@ private fun BasicRowLabel(text: String) {
 }
 
 @Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    val tokens = Aura.tokens
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
-            .clip(RoundedCornerShape(tokens.radii.md))
-            .background(tokens.colors.surface)
-            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
-            .padding(16.dp)
-    ) {
-        androidx.compose.foundation.text.BasicText(
-            text = title.uppercase(),
-            style = AuraType.labelSm.copy(color = tokens.colors.textSecondary)
-        )
-        Spacer(Modifier.height(12.dp))
-        content()
-    }
-}
-
-@Composable
 private fun ThemeChip(
     label: String,
     selected: Boolean,
@@ -377,34 +369,6 @@ private fun ThemeChip(
         androidx.compose.foundation.text.BasicText(
             text = label,
             style = AuraType.label.copy(color = fg, textAlign = TextAlign.Center)
-        )
-    }
-}
-
-@Composable
-private fun PlaceholderRow(title: String, subtitle: String) {
-    val tokens = Aura.tokens
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            androidx.compose.foundation.text.BasicText(
-                text = title,
-                style = AuraType.body.copy(color = tokens.colors.textPrimary)
-            )
-            androidx.compose.foundation.text.BasicText(
-                text = subtitle,
-                style = AuraType.label.copy(color = tokens.colors.textSecondary)
-            )
-        }
-        Box(
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(tokens.colors.textSecondary.copy(alpha = 0.4f))
         )
     }
 }

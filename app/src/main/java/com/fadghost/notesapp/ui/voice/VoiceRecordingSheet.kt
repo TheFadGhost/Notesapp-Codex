@@ -120,15 +120,15 @@ fun VoiceRecordingSheet(
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     LaunchedEffect(visible, targetNoteId, appendMode, transcriptOnly) {
-        launch { scrimAlpha.animateTo(1f, tween(220)) }
+        launch { scrimAlpha.animateTo(1f, tween(MotionTokens.SheetScrimInMs)) }
         offsetY.animateTo(0f, MotionTokens.medium(reduceMotion))
         viewModel.begin(targetNoteId, appendMode, transcriptOnly)
         if (hasPermission()) viewModel.startRecording()
     }
 
     suspend fun animateOut() {
-        scope.launch { scrimAlpha.animateTo(0f, tween(160)) }
-        offsetY.animateTo(sheetHeightPx, tween(200))
+        scope.launch { scrimAlpha.animateTo(0f, tween(MotionTokens.SheetScrimOutMs)) }
+        offsetY.animateTo(sheetHeightPx, tween(MotionTokens.SheetDropMs))
     }
 
     // Terminal-state routing.
@@ -152,13 +152,15 @@ fun VoiceRecordingSheet(
             onDismiss()
         }
     }
+    // System back = the safe dismiss (never discards a take).
+    androidx.activity.compose.BackHandler { dismiss(discard = false) }
 
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = scrimAlpha.value }
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null) {
                     // Tapping the scrim discards an idle/permission state; ignore mid-record.
                     if (state.phase == VoicePhase.REQUEST_PERMISSION || state.phase == VoicePhase.DENIED) dismiss(true)
@@ -174,17 +176,10 @@ fun VoiceRecordingSheet(
                 .background(tokens.colors.surfaceTranslucent)
                 .border(1.dp, tokens.colors.outline, RoundedCornerShape(topStart = tokens.radii.lg, topEnd = tokens.radii.lg))
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp)
                 .padding(top = 14.dp, bottom = 24.dp)
         ) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(tokens.colors.textSecondary.copy(alpha = 0.5f))
-            )
+            com.fadghost.notesapp.ui.components.GrabHandle(Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(16.dp))
             if ((state.phase == VoicePhase.STARTING || state.phase == VoicePhase.RECORDING) &&
                 !RecordingOverlayLauncher.canDraw(context)
@@ -241,7 +236,7 @@ private fun PermissionPrompt(onAllow: () -> Unit, onNotNow: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         MicBadge()
         Spacer(Modifier.height(14.dp))
-        BasicText("Record a voice ramble", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText("Record a voice ramble", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
         BasicText(
             "Notesapp needs microphone access to record and transcribe your voice. Audio stays on your device.",
@@ -261,7 +256,7 @@ private fun DeniedState(onOpenSettings: () -> Unit, onNotNow: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         MicBadge()
         Spacer(Modifier.height(14.dp))
-        BasicText("Microphone is off", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText("Microphone is off", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
         BasicText(
             "Voice notes need microphone permission. You can enable it in system settings whenever you like.",
@@ -288,18 +283,22 @@ private fun RecordingBody(
             style = AuraType.label.copy(color = if (state.paused) tokens.colors.textSecondary else tokens.colors.accent)
         )
         Spacer(Modifier.height(6.dp))
-        BasicText(formatElapsed(state.elapsedMs), style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText(formatElapsed(state.elapsedMs), style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(16.dp))
         VoiceWaveform(amplitudes = state.amplitudes, color = tokens.colors.accent)
         Spacer(Modifier.height(20.dp))
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Destructive control isolated on the far side — it used to sit one slip
+            // away from Pause at identical size (council G2). Ramble sheet layout is
+            // the reference: safe controls cluster, Discard stands alone.
             CircleControl(Glyph.TRASH, tokens.colors.danger, "Discard") { dismiss(true) }
+            Spacer(Modifier.weight(1f))
             CircleControl(
-                if (state.paused) Glyph.PLUS else Glyph.CHECK,
+                if (state.paused) Glyph.PLAY else Glyph.PAUSE,
                 tokens.colors.textPrimary,
                 if (state.paused) "Resume" else "Pause"
             ) { vm.togglePause() }
@@ -327,7 +326,7 @@ private fun ProcessingState(label: String, onCancel: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         MicBadge()
         Spacer(Modifier.height(14.dp))
-        BasicText(label, style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText(label, style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
         BasicText("Transcribing your voice note…", style = AuraType.body.copy(color = tokens.colors.textSecondary))
         Spacer(Modifier.height(18.dp))
@@ -341,7 +340,7 @@ private fun QueuedState(onDone: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         MicBadge()
         Spacer(Modifier.height(14.dp))
-        BasicText("Queued — you're offline", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText("Queued — you're offline", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
         BasicText(
             "Your audio is saved. It'll transcribe automatically when you're back online.",
@@ -358,7 +357,7 @@ private fun ErrorState(message: String, canRetry: Boolean, onRetry: () -> Unit, 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         MicBadge()
         Spacer(Modifier.height(14.dp))
-        BasicText("Couldn't finish", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+        BasicText("Couldn't finish", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
         Spacer(Modifier.height(6.dp))
         BasicText(message, style = AuraType.body.copy(color = tokens.colors.textSecondary, textAlign = TextAlign.Center))
         Spacer(Modifier.height(18.dp))

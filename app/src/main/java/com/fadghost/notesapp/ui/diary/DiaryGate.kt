@@ -112,7 +112,7 @@ fun DiaryBiometricGate(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(20.dp))
             BasicText(
                 "Diary locked",
-                style = AuraType.title.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
+                style = AuraType.titleLg.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
             )
             Spacer(Modifier.height(8.dp))
             BasicText(

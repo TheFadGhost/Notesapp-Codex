@@ -1,8 +1,8 @@
-# Notesapp Codex
+﻿# Notesapp Codex
 
-Personal AI-powered notes, diary and calendar for Android — local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
+Personal AI-powered notes, diary and calendar for Android â€” local-first, with a custom paper-and-ink design system and your own OpenRouter key for the AI bits.
 
-![version](https://img.shields.io/badge/version-v3.4.0-8a5a44?style=flat-square)
+![version](https://img.shields.io/badge/version-v4.0.0-8a5a44?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Android%2012%2B-3ddc84?style=flat-square&logo=android&logoColor=white)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![kotlin](https://img.shields.io/badge/Kotlin-2.1-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
@@ -77,10 +77,10 @@ Notesapp Codex is the actively developed continuation of Notesapp: a single-user
 
 ## Install
 
-1. On Android 12 or newer, download the signed `Notesapp-Codex-v3.4.0.apk` from the [private Releases page](https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/latest).
+1. On Android 12 or newer, download the signed `Notesapp-Codex-v4.0.0.apk` from the [private Releases page](https://github.com/TheFadGhost/Notesapp-Codex-Private/releases/latest).
 2. Open it on your phone; allow "install unknown apps" for your browser/files app when prompted.
-3. Android may show a Play Protect warning — this is normal for sideloaded apps not distributed through the Play Store; choose "Install anyway".
-4. For optional AI and transcription features, open **Settings → AI** and paste your own [OpenRouter API key](https://openrouter.ai/keys). Notes, diary, calendar, search and local reminders work without a key; there is no bundled key or backend.
+3. Android may show a Play Protect warning â€” this is normal for sideloaded apps not distributed through the Play Store; choose "Install anyway".
+4. For optional AI and transcription features, open **Settings â†’ AI** and paste your own [OpenRouter API key](https://openrouter.ai/keys). Notes, diary, calendar, search and local reminders work without a key; there is no bundled key or backend.
 
 ## Build from source
 
@@ -96,7 +96,7 @@ Unsigned CI outputs are validation-only and are never published as installable A
 
 ## Tech stack
 
-Kotlin 2.1 · Jetpack Compose (custom design system, no Material widgets) · Room + FTS4 · Hilt · Ktor · WorkManager · minSdk 31 / targetSdk 36
+Kotlin 2.1 Â· Jetpack Compose (custom design system, no Material widgets) Â· Room + FTS4 Â· Hilt Â· Ktor Â· WorkManager Â· minSdk 31 / targetSdk 36
 
 ## Changelog
 

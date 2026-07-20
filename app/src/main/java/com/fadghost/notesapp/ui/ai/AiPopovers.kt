@@ -35,6 +35,8 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Friendly no-key popover (PLAN.md §5 — "AI buttons show a friendly 'Add your
@@ -48,11 +50,12 @@ fun NoKeyPopover(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -62,7 +65,7 @@ fun NoKeyPopover(
         ) {
             AnimatedVisibility(
                 visible = visible,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                enter = scaleIn(MotionTokens.bouncyFinite(LocalReduceMotion.current)) + fadeIn(MotionTokens.fastFinite(LocalReduceMotion.current)),
                 exit = scaleOut() + fadeOut()
             ) {
                 Column(
@@ -88,7 +91,7 @@ fun NoKeyPopover(
                         contentAlignment = Alignment.Center
                     ) { AuraGlyph(Glyph.SPARKLE, tokens.colors.accent, Modifier.size(26.dp)) }
                     Spacer(Modifier.height(14.dp))
-                    BasicText("AI needs a key", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                    BasicText("AI needs a key", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                     Spacer(Modifier.height(6.dp))
                     BasicText(
                         "Add your OpenRouter key in Settings to enable Clean-up and Extract.",
@@ -111,15 +114,21 @@ fun SoftButton(
     label: String,
     filled: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Destructive styling: danger text, never the accent fill (council G1). */
+    danger: Boolean = false
 ) {
     val tokens = Aura.tokens
-    val bg = if (filled) tokens.colors.accent else tokens.colors.surface
-    val fg = if (filled) tokens.colors.background else tokens.colors.textPrimary
+    val bg = if (filled && !danger) tokens.colors.accent else tokens.colors.surface
+    val fg = when {
+        danger -> tokens.colors.danger
+        filled -> tokens.colors.background
+        else -> tokens.colors.textPrimary
+    }
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
-            .height(42.dp)
+            .height(44.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
             .auraPress(interaction, tint = true)
             .background(bg)

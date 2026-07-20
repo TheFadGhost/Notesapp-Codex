@@ -27,8 +27,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /** State for a single undo-able action shown by [AuraUndoSnackbar]. */
 data class UndoMessage(
@@ -60,7 +64,7 @@ fun AuraUndoSnackbar(
 
     AnimatedVisibility(
         visible = message != null,
-        enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(tween(160)),
+        enter = slideInVertically(MotionTokens.bouncyFinite(LocalReduceMotion.current)) { it } + fadeIn(MotionTokens.fastFinite(LocalReduceMotion.current)),
         exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(140)),
         modifier = modifier
     ) {
@@ -99,8 +103,9 @@ fun AuraUndoSnackbar(
                 val dismissInteraction = remember { MutableInteractionSource() }
                 Box(
                     Modifier
-                        .size(28.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(tokens.radii.pill))
+                        .semantics { contentDescription = "Dismiss" }
                         .auraPress(dismissInteraction)
                         .clickable(
                             interactionSource = dismissInteraction,

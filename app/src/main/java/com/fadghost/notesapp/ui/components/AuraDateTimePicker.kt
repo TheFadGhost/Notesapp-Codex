@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import java.time.LocalDateTime
@@ -92,7 +94,7 @@ private fun StepperColumn(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         BasicText(label, style = AuraType.label.copy(color = tokens.colors.textSecondary))
         Spacer(Modifier.height(4.dp))
-        StepButton(Glyph.CHEVRON_UP, onUp)
+        StepButton(Glyph.CHEVRON_UP, label = "Increase", onClick = onUp)
         Box(
             Modifier
                 .padding(vertical = 4.dp)
@@ -108,17 +110,18 @@ private fun StepperColumn(
                 style = AuraType.body.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
             )
         }
-        StepButton(Glyph.CHEVRON_DOWN, onDown)
+        StepButton(Glyph.CHEVRON_DOWN, label = "Decrease", onClick = onDown)
     }
 }
 
 @Composable
-private fun StepButton(glyph: Glyph, onClick: () -> Unit) {
+private fun StepButton(glyph: Glyph, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(width = 48.dp, height = 30.dp)
+            .size(width = 48.dp, height = 44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.sm))
             .auraPress(interaction)
             .clickable(

@@ -113,6 +113,7 @@ fun ItemDetailSheet(
     val tokens = Aura.tokens
     val reduceMotion = LocalReduceMotion.current
     val visible = draft != null
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     var lastDraft by remember { mutableStateOf<ItemDraft?>(null) }
     val renderedDraft = draft ?: lastDraft
     SideEffect { if (draft != null) lastDraft = draft }
@@ -146,25 +147,13 @@ fun ItemDetailSheet(
                         onDismiss()
                         dragOffsetY.snapTo(0f)
                     } else {
-                        dragOffsetY.animateTo(
-                            0f,
-                            spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            )
-                        )
+                        dragOffsetY.animateTo(0f, MotionTokens.settle(reduceMotion))
                     }
                 }
             },
             onDragCancel = {
                 scope.launch {
-                    dragOffsetY.animateTo(
-                        0f,
-                        spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        )
-                    )
+                    dragOffsetY.animateTo(0f, MotionTokens.settle(reduceMotion))
                 }
             }
         ) { _, deltaY ->
@@ -183,7 +172,7 @@ fun ItemDetailSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -268,17 +257,12 @@ private fun SheetBody(
                 .align(Alignment.CenterHorizontally),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                Modifier
-                    .size(width = 40.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(tokens.radii.pill))
-                    .background(tokens.colors.outline)
-            )
+            com.fadghost.notesapp.ui.components.GrabHandle()
         }
 
         BasicText(
             if (isNew) "New ${kind.name.lowercase()}" else "Edit",
-            style = AuraType.title.copy(color = tokens.colors.textPrimary)
+            style = AuraType.titleSm.copy(color = tokens.colors.textPrimary)
         )
         Spacer(Modifier.size(14.dp))
 

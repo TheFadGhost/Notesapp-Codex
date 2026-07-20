@@ -108,6 +108,7 @@ fun OrganizeFilterPanel(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler { onDismiss() }
     val density = LocalDensity.current
     var query by remember { mutableStateOf("") }
     val searchable = shouldSearchOrganizeFilters(tags)
@@ -126,7 +127,7 @@ fun OrganizeFilterPanel(
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -180,7 +181,7 @@ fun OrganizeFilterPanel(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        BasicText("Organize", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                        BasicText("Organize", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                         Spacer(Modifier.height(2.dp))
                         BasicText(
                             noteFilterSummary(filter),
@@ -296,7 +297,7 @@ private fun OrganizeFilterSearch(query: String, onQueryChange: (String) -> Unit)
         if (query.isNotEmpty()) {
             Box(
                 Modifier
-                    .size(32.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -306,7 +307,7 @@ private fun OrganizeFilterSearch(query: String, onQueryChange: (String) -> Unit)
                     .semantics { contentDescription = "Clear filter search" },
                 contentAlignment = Alignment.Center
             ) {
-                AuraGlyph(Glyph.CLOSE, tokens.colors.textSecondary, Modifier.size(14.dp))
+                AuraGlyph(Glyph.CLOSE, tokens.colors.textSecondary, Modifier.size(16.dp))
             }
         }
     }

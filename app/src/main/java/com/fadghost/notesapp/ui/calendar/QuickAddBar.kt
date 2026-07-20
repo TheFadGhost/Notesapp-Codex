@@ -39,6 +39,8 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -94,8 +96,8 @@ fun QuickAddBar(
 
         AnimatedVisibility(
             visible = parsed != null,
-            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
+            enter = expandVertically(MotionTokens.mediumFinite(LocalReduceMotion.current)) + fadeIn(),
+            exit = shrinkVertically(MotionTokens.mediumFinite(LocalReduceMotion.current)) + fadeOut()
         ) {
             val result = parsed ?: return@AnimatedVisibility
             ConfirmChip(result) {

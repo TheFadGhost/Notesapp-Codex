@@ -12,7 +12,12 @@ class ChangelogTest {
 
     @Test fun `shows once per version change`() {
         assertTrue(ChangelogGate.shouldShow(lastSeen = "0.9", current = "1.0"))
-        assertTrue(ChangelogGate.shouldShow(lastSeen = "", current = "1.0"))
+    }
+
+    @Test fun `fresh install is welcomed, not changelogged`() {
+        // Blank lastSeen = first launch — the WelcomeSheet owns that moment; the
+        // What's-New sheet would be noise about a past the user never saw.
+        assertFalse(ChangelogGate.shouldShow(lastSeen = "", current = "1.0"))
     }
 
     @Test fun `does not reshow same version`() {

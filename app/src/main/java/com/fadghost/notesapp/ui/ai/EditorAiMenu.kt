@@ -62,6 +62,7 @@ fun EditorAiMenu(
     onDismiss: () -> Unit
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = visible) { onDismiss() }
     val reduceMotion = LocalReduceMotion.current
     val density = LocalDensity.current
     val haptics = rememberAuraHaptics()
@@ -70,7 +71,7 @@ fun EditorAiMenu(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,

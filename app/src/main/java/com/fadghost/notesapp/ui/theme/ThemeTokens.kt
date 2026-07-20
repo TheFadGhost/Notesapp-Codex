@@ -27,7 +27,13 @@ data class ThemeColors(
      * citation chips) — deliberately BLUE, not the terracotta accent. Per-theme so it
      * clears 4.5:1 on that theme's background (V3-DELIGHT §7.7 a11y floor).
      */
-    val linkBlue: Color
+    val linkBlue: Color,
+    /**
+     * Modal veil tint (council audit): warm near-black so every scrim belongs to the
+     * paper world — pure #000 was the one cold neutral left in the system. Alpha
+     * still comes from [ThemeElevation.scrim] at the call site.
+     */
+    val scrimTint: Color = Color(0xFF191008)
 )
 
 @Immutable

@@ -17,8 +17,8 @@ android {
         applicationId = "com.fadghost.notesapp"
         minSdk = 31
         targetSdk = 36
-        versionCode = 8
-        versionName = "3.4.0"
+        versionCode = 9
+        versionName = "4.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -137,6 +137,10 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     // Debug-only, key-redacted HEADERS logging for the OpenRouter client (never bodies).
     implementation(libs.ktor.client.logging)
+
+    // Automation webhook: embedded Ktor CIO server (same Ktor version as the client).
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.cio)
 
     // Test
     testImplementation(libs.junit)

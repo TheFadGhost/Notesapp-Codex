@@ -152,6 +152,18 @@ fun EditorScreen(
     var findQuery by remember { mutableStateOf("") }
     var findIndex by remember { mutableStateOf(0) }
 
+    fun exitEditor() {
+        focus.clearFocus()
+        viewModel.close()
+        onExit()
+    }
+    // System back mirrors the on-screen Back exactly (flush + draft clear) instead of
+    // the shell's bare dismissal, which left a phantom "Restore unsaved note" banner.
+    // Registered here, BEFORE the overlays composed below — each overlay carries its
+    // own BackHandler that registers later and therefore wins while it is open.
+    androidx.activity.compose.BackHandler { exitEditor() }
+    androidx.activity.compose.BackHandler(enabled = findActive) { findActive = false }
+
     // One-time coach tip labelling the three AI icons (P1-3), DataStore-gated.
     val context = LocalContext.current
     val coachStore = remember { EditorCoachStore(context) }
@@ -371,11 +383,7 @@ fun EditorScreen(
             ) {
                 val scrollable = maxWidth < 380.dp
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconAction(Glyph.BACK) {
-                        focus.clearFocus()
-                        viewModel.close()
-                        onExit()
-                    }
+                    IconAction(Glyph.BACK, label = "Back") { exitEditor() }
                     val clusterMod = if (scrollable) {
                         Modifier.weight(1f).horizontalScroll(rememberScrollState())
                     } else {
@@ -384,12 +392,12 @@ fun EditorScreen(
                     Row(clusterMod, verticalAlignment = Alignment.CenterVertically) {
                         // Single AI sparkle → the 4-row anchored panel (V3-PROMPTS §1.9).
                         Box(Modifier.onGloballyPositioned { aiMenuAnchor = it.boundsInRoot() }) {
-                            IconAction(Glyph.SPARKLE, tint = tokens.colors.accent) {
+                            IconAction(Glyph.SPARKLE, label = "AI actions", tint = tokens.colors.accent) {
                                 focus.clearFocus(); showAiMenu = true
                             }
                         }
                         MicAction(tint = tokens.colors.accent) { onVoice() }
-                        IconAction(Glyph.SEARCH, tint = if (findActive) tokens.colors.accent else tokens.colors.textPrimary) {
+                        IconAction(Glyph.SEARCH, label = "Find in note", tint = if (findActive) tokens.colors.accent else tokens.colors.textPrimary) {
                             if (findActive) {
                                 findActive = false
                             } else {
@@ -399,8 +407,8 @@ fun EditorScreen(
                                 findActive = true
                             }
                         }
-                        IconAction(Glyph.PAPERCLIP, tint = tokens.colors.accent) { onAttach() }
-                        IconAction(Glyph.SHARE, tint = tokens.colors.accent) {
+                        IconAction(Glyph.PAPERCLIP, label = "Attach", tint = tokens.colors.accent) { onAttach() }
+                        IconAction(Glyph.SHARE, label = "Share as PDF", tint = tokens.colors.accent) {
                             focus.clearFocus()
                             coachScope.launch {
                                 com.fadghost.notesapp.ui.share.DocumentShare.sharePdf(
@@ -430,14 +438,26 @@ fun EditorScreen(
                             .background(tokens.colors.outline)
                     )
                     Spacer(Modifier.width(6.dp))
-                    IconAction(Glyph.TRASH, tint = tokens.colors.danger) {
+                    IconAction(Glyph.TRASH, label = "Delete note", tint = tokens.colors.danger) {
                         viewModel.deleteNote { id -> onDeleted(id) }
                     }
                 }
             }
 
             // 🔎 Find-in-note bar (IDEAS #15) — sits under the top bar, note stays visible.
-            androidx.compose.animation.AnimatedVisibility(visible = findActive) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = findActive,
+                enter = androidx.compose.animation.expandVertically(
+                    com.fadghost.notesapp.ui.theme.MotionTokens.mediumFinite(com.fadghost.notesapp.ui.theme.LocalReduceMotion.current)
+                ) + androidx.compose.animation.fadeIn(
+                    com.fadghost.notesapp.ui.theme.MotionTokens.fastFinite(com.fadghost.notesapp.ui.theme.LocalReduceMotion.current)
+                ),
+                exit = androidx.compose.animation.shrinkVertically(
+                    com.fadghost.notesapp.ui.theme.MotionTokens.mediumFinite(com.fadghost.notesapp.ui.theme.LocalReduceMotion.current)
+                ) + androidx.compose.animation.fadeOut(
+                    com.fadghost.notesapp.ui.theme.MotionTokens.fastFinite(com.fadghost.notesapp.ui.theme.LocalReduceMotion.current)
+                )
+            ) {
                 Column {
                     FindInNoteBar(
                         query = findQuery,
@@ -474,7 +494,7 @@ fun EditorScreen(
                 }
             ) {
                 if (titleValue.text.isEmpty()) {
-                    BasicText("Title", style = AuraType.title.copy(color = tokens.colors.textSecondary))
+                    BasicText("Title", style = AuraType.titleLg.copy(color = tokens.colors.textSecondary))
                 }
                 BasicTextField(
                     value = titleValue,
@@ -483,7 +503,7 @@ fun EditorScreen(
                         viewModel.onTitleChanged(it.text)
                     },
                     singleLine = true,
-                    textStyle = AuraType.title.copy(color = tokens.colors.textPrimary),
+                    textStyle = AuraType.titleLg.copy(color = tokens.colors.textPrimary),
                     cursorBrush = SolidColor(tokens.colors.accent),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -720,7 +740,8 @@ fun EditorScreen(
             onAcceptAll = aiViewModel::acceptAll,
             onDismiss = aiViewModel::dismissExtract,
             currentModel = currentTextModel,
-            onSwapModel = aiViewModel::swapModelRetryExtract
+            onSwapModel = aiViewModel::swapModelRetryExtract,
+            onRetry = aiViewModel::retryExtract
         )
 
         // ✨ AI sparkle menu — Clean up / Rewrite / Extract / Add to memory (§1.9).
@@ -746,7 +767,8 @@ fun EditorScreen(
             onKeep = aiViewModel::keepMemory,
             onDismiss = aiViewModel::dismissMemory,
             currentModel = currentTextModel,
-            onSwapModel = aiViewModel::swapModelRetryMemory
+            onSwapModel = aiViewModel::swapModelRetryMemory,
+            onRetry = aiViewModel::retryMemory
         )
 
         // Universal Undo snackbar — serves both extract batch-accept and memory saves.
@@ -867,6 +889,7 @@ private fun MicAction(tint: androidx.compose.ui.graphics.Color, onClick: () -> U
         Modifier
             .size(48.dp)
             .clip(RoundedCornerShape(tokens.radii.pill))
+            .semantics { contentDescription = "Voice note" }
             .auraPress(interaction)
             .clickable(
                 interactionSource = interaction,
@@ -1012,24 +1035,63 @@ private fun checkboxRects(
 @Composable
 private fun IconAction(
     glyph: Glyph,
+    label: String,
     tint: androidx.compose.ui.graphics.Color? = null,
     onClick: () -> Unit
 ) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
+    // Hold-to-label, same as the nav pill: the app promises "hold icon-only controls
+    // to see their labels", so the editor's top bar keeps that promise too.
+    var showHelp by remember { mutableStateOf(false) }
     Box(
         Modifier
             .size(48.dp) // P2-1: comfortable 48dp touch target.
-            .clip(RoundedCornerShape(tokens.radii.pill))
-            .auraPress(interaction)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick
-            ),
+            .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
-        AuraGlyph(glyph, tint ?: tokens.colors.textPrimary, Modifier.size(22.dp))
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(tokens.radii.pill))
+                .auraPress(interaction)
+                .pointerInput(label) {
+                    detectTapGestures(
+                        onPress = { position ->
+                            val press = androidx.compose.foundation.interaction.PressInteraction.Press(position)
+                            interaction.emit(press)
+                            val released = tryAwaitRelease()
+                            showHelp = false
+                            interaction.emit(
+                                if (released) androidx.compose.foundation.interaction.PressInteraction.Release(press)
+                                else androidx.compose.foundation.interaction.PressInteraction.Cancel(press)
+                            )
+                        },
+                        onLongPress = { showHelp = true },
+                        // A completed long press suppresses onTap, so releasing the
+                        // tooltip never also fires the action.
+                        onTap = { onClick() }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            AuraGlyph(glyph, tint ?: tokens.colors.textPrimary, Modifier.size(22.dp))
+        }
+        if (showHelp) {
+            BasicText(
+                text = label,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-34).dp)
+                    .background(
+                        tokens.colors.surface.copy(alpha = 0.98f),
+                        RoundedCornerShape(tokens.radii.sm)
+                    )
+                    .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                style = AuraType.label.copy(color = tokens.colors.textPrimary)
+            )
+        }
     }
 }
 

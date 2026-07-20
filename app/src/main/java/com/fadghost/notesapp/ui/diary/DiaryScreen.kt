@@ -152,6 +152,7 @@ private fun DiaryContent(
                     listState.animateScrollToItem(todayIndex)
                     runCatching { todayFocus.requestFocus() }
                 }
+                else -> {}
             }
         }
     }
@@ -214,8 +215,12 @@ private fun DiaryContent(
             }
 
             // Streaks + heat-map.
-            item(key = "streaks") {
-                StatsCard(state = state, onOpenDay = onOpenDay)
+            // Stats only once there's something to show — "0 days / 0 days" over an
+            // empty five-month heat-map was pure clutter on first open (council finding).
+            if (state.hasAnyEntry) {
+                item(key = "streaks") {
+                    StatsCard(state = state, onOpenDay = onOpenDay)
+                }
             }
 
             // Today's entry (front and centre).
@@ -257,7 +262,7 @@ private fun DiaryContent(
                     )
                 }
                 items(visibleTimeline, key = { it.id }) { entry ->
-                    TimelineCard(entry = entry, onClick = {
+                    TimelineCard(entry = entry, modifier = Modifier.animateItem(), onClick = {
                         runCatching { LocalDate.parse(entry.date) }.getOrNull()?.let(onOpenDay)
                     })
                 }
@@ -342,22 +347,26 @@ private fun TodayCard(
             Spacer(Modifier.height(10.dp))
             PromptChip(label = if (cleaningTranscript) "Cleaning…" else "Make it clean") {
                 if (!cleaningTranscript) onCleanTranscript(pending.raw) { result ->
-                    result.getOrNull()?.let { cleaned ->
-                        val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
-                        if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
-                        else {
-                            val caret = (pending.start + cleaned.trim().length).coerceAtMost(next.length)
-                            onBodyChange(TextFieldValue(next, TextRange(caret)))
-                            onTranscriptCleaned()
-                            cleanupMessage = null
-                        }
-                    }
+                    result.fold(
+                        onSuccess = { cleaned ->
+                            val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
+                            if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
+                            else {
+                                val caret = (pending.start + cleaned.trim().length).coerceAtMost(next.length)
+                                onBodyChange(TextFieldValue(next, TextRange(caret)))
+                                onTranscriptCleaned()
+                                cleanupMessage = null
+                            }
+                        },
+                        // Silent failure was the council's #2 completeness blocker — say what happened.
+                        onFailure = { cleanupMessage = DiaryCleanupErrors.friendly(it) }
+                    )
                 }
             }
         }
         cleanupMessage?.let {
             Spacer(Modifier.height(6.dp))
-            BasicText(it, style = AuraType.labelSm.copy(color = tokens.colors.danger))
+            BasicText(it, style = AuraType.label.copy(color = tokens.colors.danger))
         }
 
         if (body.text.isBlank() && prompts.isNotEmpty()) {
@@ -549,12 +558,12 @@ private fun OnThisDayCard(items: List<OnThisDayItem>, onOpenDay: (LocalDate) -> 
 // --- Timeline card --------------------------------------------------------------
 
 @Composable
-private fun TimelineCard(entry: DiaryEntry, onClick: () -> Unit) {
+private fun TimelineCard(entry: DiaryEntry, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val tokens = Aura.tokens
     val date = runCatching { LocalDate.parse(entry.date) }.getOrNull()
     val interaction = remember { MutableInteractionSource() }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
             .clip(RoundedCornerShape(tokens.radii.md))
@@ -690,22 +699,25 @@ private fun DiaryDayEditor(
                 Spacer(Modifier.height(10.dp))
                 PromptChip(if (cleaning) "Cleaning…" else "Make it clean") {
                     if (!cleaning) viewModel.cleanTranscript(pending.raw) { result ->
-                        result.getOrNull()?.let { cleaned ->
-                            val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
-                            if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
-                            else {
-                                body = TextFieldValue(next, TextRange((pending.start + cleaned.trim().length).coerceAtMost(next.length)))
-                                viewModel.saveEntryNow(date, next, mood?.score)
-                                insertion = null
-                                cleanupMessage = null
-                            }
-                        }
+                        result.fold(
+                            onSuccess = { cleaned ->
+                                val next = DiaryTranscriptEdit.replaceIfUnchanged(latestBody.text, pending, cleaned)
+                                if (next == null) cleanupMessage = "Transcript changed while cleaning — your edits were kept. Try again."
+                                else {
+                                    body = TextFieldValue(next, TextRange((pending.start + cleaned.trim().length).coerceAtMost(next.length)))
+                                    viewModel.saveEntryNow(date, next, mood?.score)
+                                    insertion = null
+                                    cleanupMessage = null
+                                }
+                            },
+                            onFailure = { cleanupMessage = DiaryCleanupErrors.friendly(it) }
+                        )
                     }
                 }
             }
             cleanupMessage?.let {
                 Spacer(Modifier.height(6.dp))
-                BasicText(it, style = AuraType.labelSm.copy(color = tokens.colors.danger))
+                BasicText(it, style = AuraType.label.copy(color = tokens.colors.danger))
             }
         }
         DiaryVoiceCaptureSheet(
@@ -773,3 +785,21 @@ private fun trackedTranscriptInsertion(
 
 private fun preview(body: String): String =
     Markdown.strip(body).lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() }?.take(120) ?: ""
+
+
+/** Friendly copy for a failed "Make it clean" (was a silent no-op). Raw transcript stays put. */
+internal object DiaryCleanupErrors {
+    fun friendly(e: Throwable): String = when (e) {
+        is com.fadghost.notesapp.data.ai.net.OpenRouterError.InvalidKey ->
+            "Add your OpenRouter key in Settings → AI to clean transcripts."
+        is com.fadghost.notesapp.data.ai.net.OpenRouterError.NoCredit ->
+            "Your OpenRouter account is out of credit. The raw transcript is untouched."
+        is com.fadghost.notesapp.data.ai.net.OpenRouterError.RateLimited ->
+            "Rate limited — try again in a moment. The raw transcript is untouched."
+        is com.fadghost.notesapp.data.ai.net.OpenRouterError.BudgetReached ->
+            "Monthly AI budget reached — raise it in Settings → AI."
+        is com.fadghost.notesapp.data.ai.net.OpenRouterError.Network ->
+            "You're offline — the raw transcript is untouched. Try again when connected."
+        else -> "Couldn't clean that just now — the raw transcript is untouched."
+    }
+}

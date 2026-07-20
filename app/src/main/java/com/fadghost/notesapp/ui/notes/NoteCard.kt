@@ -50,6 +50,7 @@ import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import com.fadghost.notesapp.ui.theme.auraSheetShadow
+import com.fadghost.notesapp.ui.theme.MotionTokens
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -80,7 +81,7 @@ fun NoteCard(
     var pressed by remember { mutableStateOf(false) }
     val pressScale by animateFloatAsState(
         if (pressed && !reduceMotion) 0.98f else 1f,
-        tween(if (reduceMotion) 0 else 100),
+        MotionTokens.press(reduceMotion),
         label = "cardPress"
     )
 
@@ -89,7 +90,7 @@ fun NoteCard(
     LaunchedEffect(note.id) {
         appear.snapTo(0f)
         kotlinx.coroutines.delay((index % 12) * 28L)
-        appear.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+        appear.animateTo(1f, MotionTokens.bouncy(reduceMotion))
     }
 
     val triggerPx = 150f
@@ -138,7 +139,7 @@ fun NoteCard(
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     offsetX.animateTo(0f); onPin()
                                 }
-                                else -> offsetX.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                else -> offsetX.animateTo(0f, MotionTokens.settle(reduceMotion))
                             }
                         }
                     }
@@ -152,10 +153,10 @@ fun NoteCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (note.pinned) {
                     Box(
-                        Modifier.size(18.dp).clip(CircleShape)
+                        Modifier.size(20.dp).clip(CircleShape)
                             .background(tokens.colors.accent.copy(alpha = 0.16f)),
                         contentAlignment = Alignment.Center
-                    ) { AuraGlyph(Glyph.PIN, tokens.colors.accent, Modifier.size(12.dp)) }
+                    ) { AuraGlyph(Glyph.PIN, tokens.colors.accent, Modifier.size(14.dp)) }
                     Spacer(Modifier.width(8.dp))
                 }
                 BasicText(

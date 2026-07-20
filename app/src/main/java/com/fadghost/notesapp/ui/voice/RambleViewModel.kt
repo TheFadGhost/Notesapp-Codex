@@ -148,6 +148,13 @@ class RambleViewModel @Inject constructor(
                     operationError.value = "A voice ramble is already recording."
                     return@withLock
                 }
+                // Gate BEFORE recording (council blocker): a keyless ramble recorded a
+                // full take and only then failed at transcription.
+                if (!ai.hasKeyNow()) {
+                    operationError.value =
+                        "Voice ramble needs your OpenRouter key — add it in Settings → AI first."
+                    return@withLock
+                }
                 operationError.value = null
                 val noteId = runCatching {
                     notes.saveNote(Note(title = "", body = "", createdAt = now, updatedAt = now))

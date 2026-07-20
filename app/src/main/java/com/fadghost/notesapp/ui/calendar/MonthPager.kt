@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -47,6 +48,8 @@ import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -81,13 +84,14 @@ fun MonthSection(
         ) {
             BasicText(
                 "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}",
-                style = AuraType.title.copy(color = tokens.colors.textPrimary)
+                style = AuraType.titleLg.copy(color = tokens.colors.textPrimary)
             )
             Spacer(Modifier.weight(1f))
             TodayButton(onJumpToday)
             Spacer(Modifier.size(4.dp))
-            IconTap(Glyph.BACK) { onMonthDelta(-1) }
-            IconTap(Glyph.CHEVRON) { onMonthDelta(1) }
+            IconTap(Glyph.BACK, label = "Previous month") { onMonthDelta(-1) }
+            Spacer(Modifier.width(8.dp))
+            IconTap(Glyph.CHEVRON, label = "Next month") { onMonthDelta(1) }
         }
 
         // Weekday header (Mon-first, UK).
@@ -101,6 +105,7 @@ fun MonthSection(
             }
         }
 
+        val reduceMotion = LocalReduceMotion.current
         // Springy month grid — slides horizontally on month change, and a horizontal
         // fling/drag steps the month.
         AnimatedContent(
@@ -108,8 +113,9 @@ fun MonthSection(
             transitionSpec = {
                 val forward = targetState.isAfter(initialState)
                 val dir = if (forward) 1 else -1
-                (slideInHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) { w -> dir * w } + fadeIn())
-                    .togetherWith(slideOutHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) { w -> -dir * w } + fadeOut())
+                val rm = reduceMotion
+                (slideInHorizontally(MotionTokens.mediumFinite(rm)) { w -> dir * w } + fadeIn(MotionTokens.fastFinite(rm)))
+                    .togetherWith(slideOutHorizontally(MotionTokens.mediumFinite(rm)) { w -> -dir * w } + fadeOut(MotionTokens.fastFinite(rm)))
             },
             label = "month"
         ) { m ->
@@ -186,7 +192,7 @@ private fun DayCell(
     val tokens = Aura.tokens
     val discColor by animateColorAsState(
         if (isSelected) tokens.colors.accent else Color.Transparent,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        MotionTokens.bouncy(LocalReduceMotion.current),
         label = "disc"
     )
     val numberColor = when {
@@ -272,11 +278,12 @@ private fun TodayButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun IconTap(glyph: Glyph, onClick: () -> Unit) {
+private fun IconTap(glyph: Glyph, label: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(36.dp)
+            .size(44.dp)
+            .semantics { contentDescription = label }
             .auraPress(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center

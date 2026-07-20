@@ -38,9 +38,11 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.components.rememberAuraHaptics
 import com.fadghost.notesapp.ui.theme.Aura
+import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 import com.fadghost.notesapp.ui.theme.MotionTokens
 import kotlin.math.abs
@@ -128,6 +130,8 @@ fun AuraNavBar(
                     val stretch = if (reduceMotion) 0f
                     else (abs(bubbleX.velocity) / 4000f).coerceIn(0f, 0.12f)
                     translationX = bubbleX.value + swayX.value - bubbleRadiusPx
+                    // Track the glyphs, which ride 6dp high to make room for the labels.
+                    translationY = -6.dp.toPx()
                     scaleX = 1f + stretch
                     scaleY = 1f - stretch * 0.6f
                     transformOrigin = TransformOrigin(0.5f, 0.5f)
@@ -210,7 +214,24 @@ private fun TabItem(
                 },
             contentAlignment = Alignment.Center
         ) {
-            TabGlyph(icon = tab.icon, color = iconColor, modifier = Modifier.size(24.dp))
+            // Icon rides slightly high so the always-on label fits beneath it inside the
+            // 64dp pill — primary navigation must never require a long-press to learn
+            // (council B12). The traveling bubble stays centred behind the glyph.
+            TabGlyph(
+                icon = tab.icon,
+                color = iconColor,
+                modifier = Modifier
+                    .offset(y = (-6).dp)
+                    .size(22.dp)
+            )
+            BasicText(
+                text = tab.label,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 9.dp),
+                style = AuraType.label.copy(fontSize = 9.sp, color = iconColor),
+                maxLines = 1
+            )
         }
 
         if (showHelp) {

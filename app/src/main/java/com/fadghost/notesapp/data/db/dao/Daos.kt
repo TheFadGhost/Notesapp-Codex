@@ -39,6 +39,15 @@ interface NoteDao {
     @Query("SELECT * FROM Note WHERE id = :id")
     suspend fun getById(id: Long): Note?
 
+    /** Newest active note whose title contains [q] (case-insensitive), for the
+     *  automation webhook's `append_note {titleMatch}`. LIKE is fine here: the match
+     *  is a single one-shot lookup, not a search surface. */
+    @Query(
+        "SELECT * FROM Note WHERE deletedAt IS NULL AND title LIKE '%' || :q || '%' " +
+            "ORDER BY updatedAt DESC LIMIT 1"
+    )
+    suspend fun findFirstByTitleLike(q: String): Note?
+
     @Query("SELECT * FROM Note WHERE id = :id")
     fun observeById(id: Long): Flow<Note?>
 

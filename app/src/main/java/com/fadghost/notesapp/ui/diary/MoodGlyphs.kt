@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * Hand-drawn mood faces (PLAN.md §7 — "custom mood glyphs, no Material icons").
@@ -102,7 +104,7 @@ fun MoodPicker(
             val isSel = mood == selected
             val scale by animateFloatAsState(
                 if (isSel) 1.12f else 1f,
-                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                MotionTokens.bouncy(LocalReduceMotion.current),
                 label = "mood-scale"
             )
             val interaction = remember { MutableInteractionSource() }

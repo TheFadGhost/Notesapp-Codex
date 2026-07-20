@@ -62,23 +62,43 @@ import com.fadghost.notesapp.ui.shell.LocalNavPillClearance
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
 import com.fadghost.notesapp.ui.theme.auraFloatShadow
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
 
 @Composable
 fun AskScreen(
     onOpenNote: (Long) -> Unit,
+    onOpenAiSettings: () -> Unit = {},
     viewModel: AskViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val hasKey by viewModel.hasKey.collectAsStateWithLifecycle()
     val tokens = Aura.tokens
     val navClearance = LocalNavPillClearance.current
     val listState = rememberLazyListState()
-    var input by remember { mutableStateOf("") }
+    // Saveable: a half-typed question must survive rotation / process death.
+    var input by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    // Clearing wipes the whole conversation — worth one confirm (no undo exists).
+    var confirmClear by remember { mutableStateOf(false) }
 
     fun send() {
         val text = input.trim()
         if (text.isNotEmpty() && !state.working) {
             viewModel.send(text)
             input = ""
+        }
+    }
+
+    // Nav re-tap scrolls to the top of the conversation — parity with every other tab.
+    LaunchedEffect(Unit) {
+        com.fadghost.notesapp.ui.shell.ShellSignals.flow.collect { msg ->
+            if (msg.tab == com.fadghost.notesapp.ui.shell.NavTab.ASK &&
+                msg.signal == com.fadghost.notesapp.ui.shell.ShellSignal.SCROLL_TOP
+            ) {
+                listState.animateScrollToItem(0)
+            }
         }
     }
 
@@ -100,12 +120,17 @@ fun AskScreen(
         Column(Modifier.fillMaxSize()) {
             AskHeader(
                 hasMessages = state.messages.isNotEmpty(),
-                onClear = viewModel::clearConversation
+                onClear = { confirmClear = true }
             )
             if (state.working) AskStatusPill()
 
             if (state.messages.isEmpty()) {
-                AskEmptyState(onExample = { viewModel.send(it) }, modifier = Modifier.weight(1f))
+                AskEmptyState(
+                    hasKey = hasKey,
+                    onExample = { viewModel.send(it) },
+                    onOpenAiSettings = onOpenAiSettings,
+                    modifier = Modifier.weight(1f)
+                )
             } else {
                 LazyColumn(
                     state = listState,
@@ -115,6 +140,7 @@ fun AskScreen(
                 ) {
                     items(state.messages, key = { it.id }) { message ->
                         AskBubble(
+                            modifier = Modifier.animateItem(),
                             message = message,
                             onSource = { source ->
                                 if (source.kind == AskSourceKind.NOTE && source.noteId != null) {
@@ -144,6 +170,46 @@ fun AskScreen(
             MemorySourceOverlay(source = source, onDismiss = { viewModel.selectSource(null) })
         }
 
+        // Clear-conversation confirm: one tap wiped the whole thread with no undo.
+        if (confirmClear) {
+            androidx.activity.compose.BackHandler { confirmClear = false }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
+                    .clickable(remember { MutableInteractionSource() }, indication = null) { confirmClear = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    Modifier
+                        .padding(horizontal = 36.dp)
+                        .clip(RoundedCornerShape(tokens.radii.lg))
+                        .background(tokens.colors.surface)
+                        .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.lg))
+                        .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
+                        .padding(22.dp)
+                ) {
+                    BasicText(
+                        "Clear this conversation?",
+                        style = AuraType.titleSm.copy(color = tokens.colors.textPrimary)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    BasicText(
+                        "Folio forgets this chat. Your notes and memory are untouched.",
+                        style = AuraType.body.copy(color = tokens.colors.textSecondary)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SoftButton("Keep", filled = true, onClick = { confirmClear = false })
+                        SoftButton("Clear", filled = false, onClick = {
+                            confirmClear = false
+                            viewModel.clearConversation()
+                        })
+                    }
+                }
+            }
+        }
+
         AuraUndoSnackbar(
             message = state.snackbar,
             onAction = viewModel::performUndo,
@@ -162,7 +228,8 @@ fun AskScreen(
             onApplyEdit = viewModel::applyActionEdit,
             onRevise = viewModel::reviseAction,
             onAcceptAll = viewModel::acceptAllActions,
-            onDismiss = viewModel::dismissExtract
+            onDismiss = viewModel::dismissExtract,
+            onRetry = viewModel::retryExtract
         )
 
         MemorySheet(
@@ -173,7 +240,8 @@ fun AskScreen(
             onCancelEdit = viewModel::cancelMemoryEdit,
             onApplyEdit = viewModel::applyMemoryEdit,
             onKeep = viewModel::keepMemory,
-            onDismiss = viewModel::dismissMemory
+            onDismiss = viewModel::dismissMemory,
+            onRetry = viewModel::retryMemory
         )
     }
 }
@@ -226,7 +294,12 @@ private fun AskHeader(hasMessages: Boolean, onClear: () -> Unit) {
 }
 
 @Composable
-private fun AskEmptyState(onExample: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun AskEmptyState(
+    hasKey: Boolean,
+    onExample: (String) -> Unit,
+    onOpenAiSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val tokens = Aura.tokens
     Column(
         modifier.fillMaxWidth().padding(horizontal = 28.dp),
@@ -241,14 +314,24 @@ private fun AskEmptyState(onExample: (String) -> Unit, modifier: Modifier = Modi
         Spacer(Modifier.height(18.dp))
         BasicText(
             "Ask about anything you've saved",
-            style = AuraType.title.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
+            style = AuraType.titleSm.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
         )
         Spacer(Modifier.height(7.dp))
         BasicText(
-            "Folio checks your notes and memory, then shows exactly where an answer came from.",
+            "Folio is your AI librarian — it checks your notes and memory, then shows exactly where an answer came from.",
             style = AuraType.body.copy(color = tokens.colors.textSecondary, textAlign = TextAlign.Center)
         )
         Spacer(Modifier.height(18.dp))
+        if (!hasKey) {
+            // Teach the key requirement BEFORE the first dead-end question (council blocker).
+            BasicText(
+                "Folio needs your OpenRouter key to answer — it takes a minute to add.",
+                style = AuraType.label.copy(color = tokens.colors.textSecondary, textAlign = TextAlign.Center)
+            )
+            Spacer(Modifier.height(10.dp))
+            SoftButton("Open AI settings", filled = true, onClick = onOpenAiSettings)
+            Spacer(Modifier.height(18.dp))
+        }
         listOf(
             "What did I plan for this month?",
             "What have I saved about the gym?",
@@ -271,7 +354,7 @@ private fun AskEmptyState(onExample: (String) -> Unit, modifier: Modifier = Modi
 }
 
 @Composable
-private fun AskBubble(message: AskMessage, onSource: (AskSource) -> Unit) {
+private fun AskBubble(message: AskMessage, onSource: (AskSource) -> Unit, modifier: Modifier = Modifier) {
     val tokens = Aura.tokens
     val user = message.role == AskRole.USER
     val bubbleShape = RoundedCornerShape(
@@ -281,7 +364,7 @@ private fun AskBubble(message: AskMessage, onSource: (AskSource) -> Unit) {
         bottomEnd = if (user) 4.dp else tokens.radii.lg
     )
     Column(
-        Modifier.fillMaxWidth(),
+        modifier.fillMaxWidth(),
         horizontalAlignment = if (user) Alignment.End else Alignment.Start
     ) {
         Column(
@@ -329,7 +412,7 @@ private fun SourceChip(source: AskSource, onClick: (AskSource) -> Unit) {
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(interactionSource = interaction, indication = null) { onClick(source) }
             .semantics { role = Role.Button; contentDescription = "Source: ${source.label}" }
-            .padding(horizontal = 11.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AuraGlyph(
@@ -391,7 +474,7 @@ private fun AskComposer(
                 .semantics { contentDescription = if (working) "Stop answer" else "Send question" },
             contentAlignment = Alignment.Center
         ) {
-            AuraGlyph(if (working) Glyph.CLOSE else Glyph.CHEVRON_UP, tokens.colors.background, Modifier.size(18.dp))
+            AuraGlyph(if (working) Glyph.CLOSE else Glyph.SEND, tokens.colors.background, Modifier.size(18.dp))
         }
     }
 }
@@ -416,8 +499,18 @@ private fun AskError(message: String, onRetry: () -> Unit) {
 @Composable
 private fun MemorySourceOverlay(source: AskSource, onDismiss: () -> Unit) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler { onDismiss() }
+    // Entrance fade (council: overlays teleported in with zero motion).
+    var entranceIn by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entranceIn = true }
+    val entranceAlpha by animateFloatAsState(
+        if (entranceIn) 1f else 0f,
+        MotionTokens.fast(LocalReduceMotion.current), label = "overlayEntrance"
+    )
+
     Box(
-        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = tokens.elevation.scrim))
+        Modifier.fillMaxSize().background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
+            .graphicsLayer { alpha = entranceAlpha }
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
@@ -430,7 +523,12 @@ private fun MemorySourceOverlay(source: AskSource, onDismiss: () -> Unit) {
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
                 .padding(20.dp)
         ) {
-            BasicText(source.label, style = AuraType.title.copy(color = tokens.colors.textPrimary))
+            BasicText(
+                source.label,
+                style = AuraType.titleSm.copy(color = tokens.colors.textPrimary),
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
             Spacer(Modifier.height(8.dp))
             BasicText(source.excerpt, style = AuraType.body.copy(color = tokens.colors.textSecondary))
             Spacer(Modifier.height(16.dp))

@@ -40,7 +40,7 @@ object ThemeSwitchController {
  */
 @Composable
 fun rememberAnimatedTokens(target: ThemeTokens, reduceMotion: Boolean): State<ThemeTokens> {
-    val duration = if (reduceMotion) 0 else 320
+    val duration = if (reduceMotion) 0 else MotionTokens.ThemeMorphMs
     val c = target.colors
     val background by animateColorSafe(c.background, duration)
     val surface by animateColorSafe(c.surface, duration)
@@ -109,8 +109,8 @@ fun ThemeRevealScaffold(
                 }
                 radius.snapTo(0f)
                 alpha.snapTo(1f)
-                radius.animateTo(1f, tween(420))
-                alpha.animateTo(0f, tween(120))
+                radius.animateTo(1f, tween(MotionTokens.ThemeRevealMs))
+                alpha.animateTo(0f, tween(MotionTokens.ThemeRevealFadeMs))
             }
 
             if (alpha.value > 0.001f && !firstComposition) {

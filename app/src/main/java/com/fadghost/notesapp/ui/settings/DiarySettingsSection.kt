@@ -34,8 +34,11 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.fadghost.notesapp.ui.components.SectionCard
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.AuraToggle
 import com.fadghost.notesapp.ui.components.Glyph
@@ -64,7 +67,7 @@ fun DiarySettingsSection(viewModel: DiarySettingsViewModel = hiltViewModel()) {
     }
 
     // --- Privacy ---
-    SectionCardLocal(title = "Privacy") {
+    SectionCard(title = "Privacy") {
         ToggleRow(
             title = "Lock the Diary tab",
             subtitle = "Locks the diary screen. Data on disk is not encrypted.",
@@ -76,7 +79,7 @@ fun DiarySettingsSection(viewModel: DiarySettingsViewModel = hiltViewModel()) {
     Spacer(Modifier.height(16.dp))
 
     // --- Diary nudge ---
-    SectionCardLocal(title = "Diary") {
+    SectionCard(title = "Diary") {
         ToggleRow(
             title = "Daily journaling reminder",
             subtitle = if (nudgeOn && !notificationsGranted)
@@ -152,7 +155,7 @@ private fun Field(label: String, display: String, onUp: () -> Unit, onDown: () -
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         BasicText(label, style = AuraType.label.copy(color = tokens.colors.textSecondary))
         Spacer(Modifier.height(4.dp))
-        StepBtn(Glyph.CHEVRON_UP, onUp)
+        StepBtn(Glyph.CHEVRON_UP, label = "Later", onClick = onUp)
         Box(
             Modifier
                 .padding(vertical = 4.dp)
@@ -165,17 +168,18 @@ private fun Field(label: String, display: String, onUp: () -> Unit, onDown: () -
         ) {
             BasicText(display, style = AuraType.titleSm.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center))
         }
-        StepBtn(Glyph.CHEVRON_DOWN, onDown)
+        StepBtn(Glyph.CHEVRON_DOWN, label = "Earlier", onClick = onDown)
     }
 }
 
 @Composable
-private fun StepBtn(glyph: Glyph, onClick: () -> Unit) {
+private fun StepBtn(glyph: Glyph, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
             .size(width = 56.dp, height = 44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.sm))
             .auraPress(interaction)
             .clickable(
@@ -186,23 +190,5 @@ private fun StepBtn(glyph: Glyph, onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         AuraGlyph(glyph, tokens.colors.accent, Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun SectionCardLocal(title: String, content: @Composable () -> Unit) {
-    val tokens = Aura.tokens
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .auraSheetShadow(RoundedCornerShape(tokens.radii.md))
-            .clip(RoundedCornerShape(tokens.radii.md))
-            .background(tokens.colors.surface)
-            .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.md))
-            .padding(16.dp)
-    ) {
-        BasicText(title.uppercase(), style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
-        Spacer(Modifier.height(12.dp))
-        content()
     }
 }

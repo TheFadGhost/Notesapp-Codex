@@ -175,7 +175,7 @@ fun DiaryVoiceCaptureSheet(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
         )
         Column(
@@ -191,13 +191,13 @@ fun DiaryVoiceCaptureSheet(
                 )
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     BasicText("VOICE TO DIARY", style = AuraType.labelSm.copy(color = tokens.colors.accent))
-                    BasicText(date.toString(), style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                    BasicText(date.toString(), style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                 }
                 SheetIcon(Glyph.CLOSE, "Hide voice sheet", onDismiss)
             }
@@ -366,7 +366,7 @@ private fun DiaryCaptureBody(
                 }
             )
         } else {
-            AuraType.title.copy(color = tokens.colors.textPrimary)
+            AuraType.titleSm.copy(color = tokens.colors.textPrimary)
         }
     )
     Spacer(Modifier.size(6.dp))
@@ -435,7 +435,7 @@ private fun MessageBlock(title: String, body: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         BasicText(
             title,
-            style = AuraType.title.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
+            style = AuraType.titleSm.copy(color = tokens.colors.textPrimary, textAlign = TextAlign.Center)
         )
         Spacer(Modifier.size(6.dp))
         BasicText(

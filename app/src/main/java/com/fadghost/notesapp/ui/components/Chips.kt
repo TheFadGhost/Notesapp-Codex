@@ -28,6 +28,10 @@ import com.fadghost.notesapp.data.db.entity.Tag
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraAccents
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.animateColorAsState
 
 /** Wrapping row of chips. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -44,7 +48,15 @@ fun FlowChips(content: @Composable () -> Unit) {
 fun TagChip(tag: Tag, selected: Boolean, onClick: (() -> Unit)? = null) {
     val tokens = Aura.tokens
     val dot = AuraAccents.resolve(tag.color, tokens.colors.accent)
-    val bg = if (selected) dot.copy(alpha = 0.18f) else tokens.colors.surface
+    val reduceMotion = LocalReduceMotion.current
+    val bg by animateColorAsState(
+        if (selected) dot.copy(alpha = 0.18f) else tokens.colors.surface,
+        MotionTokens.fast(reduceMotion), label = "tagChipBg"
+    )
+    val borderColor by animateColorAsState(
+        if (selected) dot else tokens.colors.outline,
+        MotionTokens.fast(reduceMotion), label = "tagChipBorder"
+    )
     val interaction = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
@@ -52,7 +64,7 @@ fun TagChip(tag: Tag, selected: Boolean, onClick: (() -> Unit)? = null) {
             .clip(RoundedCornerShape(tokens.radii.pill))
             .then(if (onClick != null) Modifier.auraPress(interaction) else Modifier)
             .background(bg)
-            .border(1.dp, if (selected) dot else tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
+            .border(1.dp, borderColor, RoundedCornerShape(tokens.radii.pill))
             .then(
                 if (onClick != null) Modifier.clickable(
                     interactionSource = interaction,
@@ -60,11 +72,11 @@ fun TagChip(tag: Tag, selected: Boolean, onClick: (() -> Unit)? = null) {
                     onClick = onClick
                 ) else Modifier
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-        Spacer(Modifier.width(7.dp))
+        Spacer(Modifier.width(8.dp))
         BasicText(tag.name, style = AuraType.label.copy(color = tokens.colors.textPrimary))
     }
 }
@@ -73,8 +85,15 @@ fun TagChip(tag: Tag, selected: Boolean, onClick: (() -> Unit)? = null) {
 @Composable
 fun PlainChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val tokens = Aura.tokens
-    val bg = if (selected) tokens.colors.accent.copy(alpha = 0.9f) else tokens.colors.surface
-    val fg = if (selected) lerp(tokens.colors.textPrimary, tokens.colors.background, 0.9f) else tokens.colors.textSecondary
+    val plainReduceMotion = LocalReduceMotion.current
+    val bg by animateColorAsState(
+        if (selected) tokens.colors.accent.copy(alpha = 0.9f) else tokens.colors.surface,
+        MotionTokens.fast(plainReduceMotion), label = "plainChipBg"
+    )
+    val fg by animateColorAsState(
+        if (selected) lerp(tokens.colors.textPrimary, tokens.colors.background, 0.9f) else tokens.colors.textSecondary,
+        MotionTokens.fast(plainReduceMotion), label = "plainChipFg"
+    )
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier

@@ -174,9 +174,24 @@ fun AppShell(
             pendingDiaryFocus = false
         }
     }
+    // "Open AI settings" deep link: land on Settings scrolled to the AI card, not the top
+    // of "Look & feel" (council: the no-key popover promised Settings, then hid the card).
+    var pendingAiSettingsFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingAiSettingsFocus, selectedTab) {
+        if (pendingAiSettingsFocus && selectedTab == NavTab.SETTINGS) {
+            ShellSignals.send(NavTab.SETTINGS, ShellSignal.FOCUS_AI_SETTINGS)
+            pendingAiSettingsFocus = false
+        }
+    }
 
+    // Back walks to the start tab before exiting (bottom-nav convention). Registered
+    // FIRST so every overlay/editor handler (registered later) takes priority.
+    BackHandler(enabled = selectedTab != NavTab.NOTES) { selectedTab = NavTab.NOTES }
     // Back closes the top overlay instead of exiting the app (V2-SPEC item 12).
     BackHandler(enabled = captureVisible) { captureVisible = false }
+    // Safety net only — EditorScreen registers its own always-on handler (which wins
+    // while composed) so system back runs the same close()/draft-clear path as the
+    // on-screen Back button instead of leaving a phantom draft.
     BackHandler(enabled = editorNoteId != null) { editorNoteId = null; restoringDraft = false }
 
     // One holder preserves each tab's UI state (scroll position, rememberSaveable)
@@ -200,16 +215,17 @@ fun AppShell(
                     targetState = selectedTab,
                     transitionSpec = {
                         if (reduceMotion) {
-                            fadeIn(tween(120)).togetherWith(fadeOut(tween(120)))
+                            fadeIn(tween(MotionTokens.TabReducedFadeMs))
+                                .togetherWith(fadeOut(tween(MotionTokens.TabReducedFadeMs)))
                         } else {
                             val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
                             (slideInHorizontally(
-                                tween(220, easing = MotionTokens.EmphasizedDecelerate)
-                            ) { dir * slidePx } + fadeIn(tween(180)))
+                                tween(MotionTokens.TabSlideInMs, easing = MotionTokens.EmphasizedDecelerate)
+                            ) { dir * slidePx } + fadeIn(tween(MotionTokens.TabFadeInMs)))
                                 .togetherWith(
                                     slideOutHorizontally(
-                                        tween(200, easing = MotionTokens.EmphasizedDecelerate)
-                                    ) { -dir * slidePx / 2 } + fadeOut(tween(140))
+                                        tween(MotionTokens.TabSlideOutMs, easing = MotionTokens.EmphasizedDecelerate)
+                                    ) { -dir * slidePx / 2 } + fadeOut(tween(MotionTokens.TabFadeOutMs))
                                 )
                         }
                     },
@@ -220,7 +236,13 @@ fun AppShell(
                             NavTab.NOTES -> NotesScreen(onOpenNote = { editorNoteId = it })
                             NavTab.DIARY -> DiaryScreen()
                             NavTab.CALENDAR -> CalendarScreen()
-                            NavTab.ASK -> AskScreen(onOpenNote = { editorNoteId = it })
+                            NavTab.ASK -> AskScreen(
+                                onOpenNote = { editorNoteId = it },
+                                onOpenAiSettings = {
+                                    selectedTab = NavTab.SETTINGS
+                                    pendingAiSettingsFocus = true
+                                }
+                            )
                             NavTab.SETTINGS -> SettingsScreen(
                                 currentMode = themeMode,
                                 onSelectMode = onSelectThemeMode
@@ -371,6 +393,11 @@ fun AppShell(
             visible = showVoiceCapture,
             onDismiss = { showVoiceCapture = false },
             onOpenNote = { id -> showVoiceCapture = false; editorNoteId = id },
+            onOpenAiSettings = {
+                showVoiceCapture = false
+                selectedTab = NavTab.SETTINGS
+                pendingAiSettingsFocus = true
+            },
             viewModel = rambleVm
         )
 
@@ -396,7 +423,9 @@ fun AppShell(
                         if (deletedId > 0) ShellSignals.noteDeleted(deletedId)
                     },
                     onOpenAiSettings = {
-                        editorNoteId = null; restoringDraft = false; selectedTab = NavTab.SETTINGS
+                        editorNoteId = null; restoringDraft = false
+                        selectedTab = NavTab.SETTINGS
+                        pendingAiSettingsFocus = true
                     }
                 )
             }

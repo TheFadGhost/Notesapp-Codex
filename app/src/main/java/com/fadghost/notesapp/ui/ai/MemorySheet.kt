@@ -39,11 +39,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.fadghost.notesapp.ui.components.AuraGlyph
 import com.fadghost.notesapp.ui.components.Glyph
 import com.fadghost.notesapp.ui.components.auraPress
 import com.fadghost.notesapp.ui.theme.Aura
 import com.fadghost.notesapp.ui.theme.AuraType
+import com.fadghost.notesapp.ui.theme.MotionTokens
+import com.fadghost.notesapp.ui.theme.LocalReduceMotion
 
 /**
  * "Add to memory" confirm sheet (V3-PROMPTS.md §1.2). One card per proposed entry — the
@@ -62,19 +66,23 @@ fun MemorySheet(
     onKeep: () -> Unit,
     onDismiss: () -> Unit,
     currentModel: String = "",
-    onSwapModel: ((String) -> Unit)? = null
+    onSwapModel: ((String) -> Unit)? = null,
+    /** Re-issues the failed request. Defaults to dismiss for callers without a retry path. */
+    onRetry: (() -> Unit)? = null
 ) {
     val tokens = Aura.tokens
+    androidx.activity.compose.BackHandler(enabled = state.active) { onDismiss() }
+    val reduceMotion = LocalReduceMotion.current
     AnimatedVisibility(state.active, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = tokens.elevation.scrim))
+                .background(tokens.colors.scrimTint.copy(alpha = tokens.elevation.scrim))
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
         ) {
             AnimatedVisibility(
                 state.active,
-                enter = slideInVertically(spring(stiffness = Spring.StiffnessLow)) { it } + fadeIn(),
+                enter = slideInVertically(MotionTokens.bouncyFinite(reduceMotion)) { it } + fadeIn(MotionTokens.fastFinite(reduceMotion)),
                 exit = slideOutVertically { it } + fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
@@ -91,7 +99,7 @@ fun MemorySheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AuraGlyph(Glyph.BOOK, tokens.colors.accent, Modifier.size(22.dp))
                         Spacer(Modifier.size(10.dp))
-                        BasicText("Add to memory", style = AuraType.title.copy(color = tokens.colors.textPrimary))
+                        BasicText("Add to memory", style = AuraType.titleSm.copy(color = tokens.colors.textPrimary))
                         Spacer(Modifier.weight(1f))
                         if (state.loading) {
                             BasicText(
@@ -108,7 +116,7 @@ fun MemorySheet(
                             style = AuraType.body.copy(color = tokens.colors.textSecondary)
                         )
                         state.error != null || state.rawError != null ->
-                            MemoryError(state.error, state.rawError, onDismiss, currentModel, onSwapModel)
+                            MemoryError(state.error, state.rawError, onRetry ?: onDismiss, currentModel, onSwapModel)
                         state.cards.isEmpty() -> BasicText(
                             // Folio empty copy — honest, never a blank stare (V3-DELIGHT §3C).
                             state.skippedReason?.let { "Nothing durable to keep here — $it" }
@@ -193,9 +201,12 @@ private fun MemoryCardItem(
                 MemoryEditPanel(m.title, m.body, onApplyEdit, onCancelEdit)
             } else {
                 Spacer(Modifier.size(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconChip(Glyph.HEADING, tokens.colors.textSecondary, onBeginEdit)
-                    IconChip(Glyph.CLOSE, tokens.colors.danger, onRemove)
+                // Remove sits alone on the far side — destructive never neighbours its
+                // benign twin (council thumb audit).
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconChip(Glyph.PENCIL, tokens.colors.textSecondary, label = "Edit entry", onClick = onBeginEdit)
+                    Spacer(Modifier.weight(1f))
+                    IconChip(Glyph.CLOSE, tokens.colors.danger, label = "Remove entry", onClick = onRemove)
                 }
             }
         }
@@ -247,17 +258,26 @@ private fun Field(value: String, placeholder: String, minLines: Int = 1, onChang
 private fun AcceptBox(checked: Boolean, onToggle: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
+    // 44dp hit area around the 28dp visual box (council thumb audit).
     Box(
         Modifier
-            .size(28.dp)
+            .size(44.dp)
             .clip(RoundedCornerShape(tokens.radii.sm))
+            .semantics { contentDescription = if (checked) "Don't keep this memory" else "Keep this memory" }
             .auraPress(interaction)
-            .background(if (checked) tokens.colors.accent else Color.Transparent)
-            .border(1.dp, if (checked) tokens.colors.accent else tokens.colors.outline, RoundedCornerShape(tokens.radii.sm))
             .clickable(interactionSource = interaction, indication = null, onClick = onToggle),
         contentAlignment = Alignment.Center
     ) {
-        if (checked) AuraGlyph(Glyph.CHECK, tokens.colors.background, Modifier.size(18.dp))
+        Box(
+            Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(tokens.radii.sm))
+                .background(if (checked) tokens.colors.accent else Color.Transparent)
+                .border(1.dp, if (checked) tokens.colors.accent else tokens.colors.outline, RoundedCornerShape(tokens.radii.sm)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) AuraGlyph(Glyph.CHECK, tokens.colors.background, Modifier.size(18.dp))
+        }
     }
 }
 
@@ -301,12 +321,13 @@ private fun TagPill(tag: String) {
 }
 
 @Composable
-private fun IconChip(glyph: Glyph, color: Color, onClick: () -> Unit) {
+private fun IconChip(glyph: Glyph, color: Color, label: String, onClick: () -> Unit) {
     val tokens = Aura.tokens
     val interaction = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(38.dp)
+            .size(44.dp)
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(tokens.radii.sm))
             .auraPress(interaction)
             .background(tokens.colors.surface)
@@ -327,7 +348,7 @@ private fun TextChip(label: String, onClick: () -> Unit) {
             .background(tokens.colors.surface)
             .border(1.dp, tokens.colors.outline, RoundedCornerShape(tokens.radii.pill))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) { BasicText(label, style = AuraType.label.copy(color = tokens.colors.textPrimary)) }
 }
 
@@ -343,7 +364,7 @@ private fun MemoryError(
     var showDetails by remember { mutableStateOf(false) }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AuraGlyph(Glyph.CLOSE, tokens.colors.danger, Modifier.size(18.dp))
+            AuraGlyph(Glyph.WARNING, tokens.colors.danger, Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             BasicText("That didn't work", style = AuraType.body.copy(color = tokens.colors.textPrimary))
         }
