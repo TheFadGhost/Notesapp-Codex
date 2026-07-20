@@ -271,6 +271,7 @@ class RamblePipelineWorker(
         is OpenRouterError.ModelUnavailable -> "model_unavailable"
         is OpenRouterError.Network -> "network"
         is OpenRouterError.Parse -> "parse"
+        is OpenRouterError.BudgetReached -> "budget_reached"
         else -> "pipeline"
     }
 
@@ -281,6 +282,7 @@ class RamblePipelineWorker(
         is OpenRouterError.ModelUnavailable -> "The selected voice or text model is unavailable."
         is OpenRouterError.Network -> "Couldn't reach OpenRouter — this voice note will retry."
         is OpenRouterError.Parse -> "Couldn't read the transcription response."
+        is OpenRouterError.BudgetReached -> "Monthly AI budget reached — raise it in Settings → AI. The audio is safe."
         else -> "Couldn't finish this voice note. The audio is safe."
     }
 

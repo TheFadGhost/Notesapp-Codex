@@ -465,6 +465,7 @@ class AskViewModel @Inject constructor(
         is OpenRouterError.NoCredit -> "Your OpenRouter credit has run out."
         is OpenRouterError.RateLimited -> "Folio is being rate-limited. Try again in a moment."
         is OpenRouterError.ModelUnavailable -> "That model can't be reached. Pick another in Settings."
+        is OpenRouterError.BudgetReached -> "Monthly AI budget reached — raise or clear it in Settings → AI."
         is OpenRouterError.Network -> "You're offline. Your conversation is still here."
         is OpenRouterError.Parse -> "That answer came back garbled. Try once more?"
         is OpenRouterError.Unknown -> error.detail?.take(180) ?: "Folio couldn't answer that just now."

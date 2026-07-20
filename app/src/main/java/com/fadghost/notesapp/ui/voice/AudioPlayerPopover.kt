@@ -138,6 +138,12 @@ private fun PlayerCard(
         Spacer(Modifier.height(18.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            // -10s skip (IDEAS #32).
+            SkipButton(label = "-10s") {
+                controller.skip(-10_000)
+                positionMs = controller.positionMs().toFloat()
+            }
+            Spacer(Modifier.size(8.dp))
             // Play / pause.
             val playInteraction = remember { MutableInteractionSource() }
             Box(
@@ -160,6 +166,12 @@ private fun PlayerCard(
                     AuraGlyph(Glyph.CHEVRON, tokens.colors.background, Modifier.size(22.dp))
                 }
             }
+            Spacer(Modifier.size(8.dp))
+            // +10s skip (IDEAS #32).
+            SkipButton(label = "+10s") {
+                controller.skip(10_000)
+                positionMs = controller.positionMs().toFloat()
+            }
             Spacer(Modifier.size(14.dp))
             Column(Modifier.weight(1f)) {
                 Scrubber(
@@ -171,8 +183,25 @@ private fun PlayerCard(
                     }
                 )
                 Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     BasicText(formatTime(positionMs.toLong()), style = AuraType.label.copy(color = tokens.colors.textSecondary))
+                    // Speed chip (IDEAS #32): 1× → 1.25× → 1.5× → 2× → 1×.
+                    var speed by remember(attachment.id) { mutableFloatStateOf(1f) }
+                    val speedInteraction = remember { MutableInteractionSource() }
+                    BasicText(
+                        formatSpeed(speed),
+                        style = AuraType.label.copy(color = tokens.colors.accent),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(tokens.radii.pill))
+                            .auraPress(speedInteraction)
+                            .background(tokens.colors.accent.copy(alpha = 0.12f))
+                            .clickable(speedInteraction, indication = null) { speed = controller.cycleSpeed() }
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    )
                     BasicText(formatTime(attachment.durationMs), style = AuraType.label.copy(color = tokens.colors.textSecondary))
                 }
             }
@@ -238,6 +267,27 @@ private fun Scrubber(fraction: Float, onSeek: (Float) -> Unit) {
         )
     }
 }
+
+/** Small circular ±10s control matching the player's soft chip language. */
+@Composable
+private fun SkipButton(label: String, onClick: () -> Unit) {
+    val tokens = Aura.tokens
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .auraPress(interaction)
+            .background(tokens.colors.accent.copy(alpha = 0.12f))
+            .clickable(interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicText(label, style = AuraType.labelSm.copy(color = tokens.colors.accent))
+    }
+}
+
+private fun formatSpeed(speed: Float): String =
+    if (speed == speed.toLong().toFloat()) "${speed.toLong()}×" else "$speed×"
 
 private fun formatTime(ms: Long): String {
     val totalSec = (ms / 1000).coerceAtLeast(0)

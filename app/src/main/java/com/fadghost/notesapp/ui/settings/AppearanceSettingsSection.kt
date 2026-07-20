@@ -70,6 +70,7 @@ fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
     val mode by viewModel.themeMode.collectAsStateWithLifecycle()
     val accentIndex by viewModel.accentIndex.collectAsStateWithLifecycle()
     val reduceMotion by viewModel.reduceMotion.collectAsStateWithLifecycle()
+    val textScale by viewModel.textScale.collectAsStateWithLifecycle()
     val systemDark = isSystemInDarkTheme()
 
     Column(
@@ -139,6 +140,29 @@ fun AppearanceSettingsSection(viewModel: MainViewModel = hiltViewModel()) {
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             BasicText("Theme default", style = AuraType.label.copy(color = tokens.colors.textSecondary))
+        }
+
+        Spacer(Modifier.height(18.dp))
+        // In-app text size (IDEAS #89): multiplies the system font scale, live preview.
+        BasicText("Text size", style = AuraType.bodyLg.copy(color = tokens.colors.textPrimary))
+        Spacer(Modifier.height(10.dp))
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(
+                "Small" to 0.9f,
+                "Default" to 1f,
+                "Large" to 1.1f,
+                "Larger" to 1.2f
+            ).forEach { (label, scale) ->
+                com.fadghost.notesapp.ui.components.PlainChip(
+                    label = label,
+                    selected = kotlin.math.abs(textScale - scale) < 0.01f,
+                    onClick = { viewModel.setTextScale(scale) }
+                )
+            }
         }
 
         Spacer(Modifier.height(18.dp))

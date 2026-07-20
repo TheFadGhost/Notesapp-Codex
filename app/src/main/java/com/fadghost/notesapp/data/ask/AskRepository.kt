@@ -1,5 +1,6 @@
 package com.fadghost.notesapp.data.ask
 
+import com.fadghost.notesapp.data.ai.AiBudgetGate
 import com.fadghost.notesapp.data.ai.AiPreferences
 import com.fadghost.notesapp.data.ai.ApiKeyStore
 import com.fadghost.notesapp.data.ai.Connectivity
@@ -34,13 +35,15 @@ class AskRepository @Inject constructor(
     private val costDao: AiCostDao,
     private val notes: NotesRepository,
     private val memory: MemoryRepository,
-    private val connectivity: Connectivity
+    private val connectivity: Connectivity,
+    private val budgetGate: AiBudgetGate
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /** Retrieve context first, then stream an answer grounded in the returned sources. */
     fun ask(question: String, history: List<AskTurn>): Flow<AskStream> = flow {
         if (!connectivity.isOnline()) throw OpenRouterError.Network("offline")
+        budgetGate.ensureWithinBudget()
         val key = keyStore.get() ?: throw OpenRouterError.InvalidKey
         val model = preferences.textModel.first()
         val sources = retrieve(question, key, model)

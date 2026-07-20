@@ -17,8 +17,8 @@ android {
         applicationId = "com.fadghost.notesapp"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "3.3.0"
+        versionCode = 8
+        versionName = "3.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

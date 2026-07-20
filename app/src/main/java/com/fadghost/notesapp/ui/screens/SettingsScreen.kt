@@ -118,6 +118,7 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     val status by viewModel.status.collectAsStateWithLifecycle()
     val pending by viewModel.pendingPreview.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lastBackupAt by viewModel.lastBackupAt.collectAsStateWithLifecycle()
 
     val exporting = uiState is BackupUiState.Exporting
     val importing = uiState is BackupUiState.Importing
@@ -140,6 +141,17 @@ private fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
     ) { uri -> uri?.let(viewModel::loadPreview) }
 
     SectionCard(title = "Backup") {
+        // Last-backup nudge (IDEAS #83): honest recency + amber when it goes stale.
+        val now = remember { System.currentTimeMillis() }
+        val stale = com.fadghost.notesapp.data.prefs.BackupPreferences.isStale(lastBackupAt, now)
+        BasicText(
+            com.fadghost.notesapp.data.prefs.BackupPreferences.describe(lastBackupAt, now) +
+                if (stale) " — a fresh export keeps your notes safe." else "",
+            style = AuraType.label.copy(
+                color = if (stale) tokens.colors.accent else tokens.colors.textSecondary
+            ),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
         ActionRow(
             title = "Export all notes",
             subtitle = "ZIP: markdown + metadata + checksums",

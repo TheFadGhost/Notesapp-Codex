@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses simple date-tagged releases rather than strict SemVer
 (it's a sideloaded personal app, not a library).
 
+## [v3.4.0] - 2026-07-20 - Quality of Life
+
+A quality-of-life sweep across the whole app: search inside a note, keep AI spend under a cap,
+recover from a bad model in one tap, listen to voice notes faster, and trust backups more.
+
+### Added
+- **Find in note**: a search icon in the editor opens a find bar with live match highlighting,
+  match count, and next/previous stepping that scrolls each hit into view.
+- **Copy text from images**: the fullscreen image viewer shows a "Copy text" pill whenever the
+  image has recognised text, putting the already-extracted OCR text on the clipboard.
+- **Retry with a different model**: AI error cards (Clean up, Rewrite, Extract, Add to memory)
+  now offer one-tap chips that switch to a recommended model and retry immediately.
+- **Monthly AI budget cap**: an optional USD cap in Settings → AI. Spend is checked against
+  OpenRouter's own recorded costs before any request leaves the device; a nearing-budget warning
+  and a clear paused state explain what's happening. Applies to text, Ask, and transcription.
+- **Streak grace**: one missed diary day no longer breaks the current streak — the run bridges a
+  single gap (shown honestly), while the all-time longest streak stays strict.
+- **Voice player speed and skip**: 1×/1.25×/1.5×/2× playback and ±10s skip buttons in the
+  voice-note player.
+- **Text size setting**: Small / Default / Large / Larger in Settings → Appearance, multiplying
+  the system font scale across the whole app.
+- **Last-backup nudge**: the Backup card shows when the last export happened and gently nudges
+  once it's stale (14+ days) or has never been done.
+- **Preferences in backups**: theme, accent, reduce-motion, text size, chosen AI models,
+  transcript auto-clean, budget cap, and model favourites now travel inside the backup ZIP and
+  are applied on Replace restore. Never any API key or secret.
+
+### Changed
+- Older backups without embedded preferences continue to restore exactly as before.
+
 ## [v3.3.0] - 2026-07-15 - Deliberate Motion & Reliable Capture
 
 This release tightens the app's interaction model: gestures distinguish intent, recording can

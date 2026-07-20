@@ -58,4 +58,18 @@ object CostAccumulator {
         val date = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().withDayOfMonth(1)
         return date.atStartOfDay(zone).toInstant().toEpochMilli()
     }
+
+    /** Budget standing for the monthly cap (IDEAS #26). NONE == no cap configured. */
+    enum class BudgetLevel { NONE, UNDER, NEAR, OVER }
+
+    /**
+     * Pure cap check: no cap (<= 0) → NONE; at or past the cap → OVER; within
+     * [nearFraction] of it → NEAR (the "you're close" amber warning); else UNDER.
+     */
+    fun budgetLevel(monthTotalUsd: Double, capUsd: Double, nearFraction: Double = 0.8): BudgetLevel = when {
+        capUsd <= 0.0 -> BudgetLevel.NONE
+        monthTotalUsd >= capUsd -> BudgetLevel.OVER
+        monthTotalUsd >= capUsd * nearFraction -> BudgetLevel.NEAR
+        else -> BudgetLevel.UNDER
+    }
 }

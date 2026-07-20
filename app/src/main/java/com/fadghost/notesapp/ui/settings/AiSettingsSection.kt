@@ -79,6 +79,7 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
     val sttTestStatus by viewModel.sttTestStatus.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val autoCleanTranscript by viewModel.autoCleanTranscript.collectAsStateWithLifecycle()
+    val monthlyBudget by viewModel.monthlyBudget.collectAsStateWithLifecycle()
 
     val clipboard = LocalClipboardManager.current
     var keyInput by remember { mutableStateOf("") }
@@ -190,11 +191,55 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
         Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 BasicText("This month", style = AuraType.body.copy(color = tokens.colors.textPrimary))
-                BasicText(formatUsd(monthTotal), style = AuraType.label.copy(color = tokens.colors.textSecondary))
+                BasicText(
+                    formatUsd(monthTotal) + if (monthlyBudget > 0.0) " of ${formatUsd(monthlyBudget)} budget" else "",
+                    style = AuraType.label.copy(color = tokens.colors.textSecondary)
+                )
             }
             lastCall?.let {
                 LastCallChip(feature = it.feature, cost = it.costUsd)
             }
+        }
+
+        // --- Monthly budget cap (IDEAS #26) — the only running cost gets a ceiling. ---
+        Spacer(Modifier.height(4.dp))
+        BasicText("Monthly budget", style = AuraType.body.copy(color = tokens.colors.textPrimary))
+        BasicText(
+            "AI pauses when this month's spend reaches the cap.",
+            style = AuraType.label.copy(color = tokens.colors.textSecondary)
+        )
+        Spacer(Modifier.height(8.dp))
+        com.fadghost.notesapp.ui.components.FlowChips {
+            com.fadghost.notesapp.ui.components.PlainChip(
+                label = "Off",
+                selected = monthlyBudget <= 0.0,
+                onClick = { viewModel.setMonthlyBudget(0.0) }
+            )
+            listOf(1.0, 2.0, 5.0, 10.0, 20.0).forEach { cap ->
+                com.fadghost.notesapp.ui.components.PlainChip(
+                    label = "$" + if (cap == cap.toLong().toDouble()) "${cap.toLong()}" else "$cap",
+                    selected = monthlyBudget == cap,
+                    onClick = { viewModel.setMonthlyBudget(cap) }
+                )
+            }
+        }
+        val budgetLevel = com.fadghost.notesapp.data.ai.cost.CostAccumulator.budgetLevel(monthTotal, monthlyBudget)
+        when (budgetLevel) {
+            com.fadghost.notesapp.data.ai.cost.CostAccumulator.BudgetLevel.NEAR -> {
+                Spacer(Modifier.height(6.dp))
+                BasicText(
+                    "Getting close — ${formatUsd(monthlyBudget - monthTotal)} left this month.",
+                    style = AuraType.label.copy(color = tokens.colors.accent)
+                )
+            }
+            com.fadghost.notesapp.data.ai.cost.CostAccumulator.BudgetLevel.OVER -> {
+                Spacer(Modifier.height(6.dp))
+                BasicText(
+                    "Budget reached — AI is paused until next month, a higher cap, or Off.",
+                    style = AuraType.label.copy(color = tokens.colors.danger)
+                )
+            }
+            else -> Unit
         }
     }
 

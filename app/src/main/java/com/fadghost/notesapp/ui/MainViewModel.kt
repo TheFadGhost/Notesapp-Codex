@@ -36,6 +36,17 @@ class MainViewModel @Inject constructor(
         initialValue = false
     )
 
+    /** In-app text scale (IDEAS #89); multiplies the system font scale. */
+    val textScale: StateFlow<Float> = themePreferences.textScale.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = 1f
+    )
+
+    fun setTextScale(scale: Float) {
+        viewModelScope.launch { themePreferences.setTextScale(scale) }
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { themePreferences.setThemeMode(mode) }
     }

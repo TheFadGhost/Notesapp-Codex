@@ -150,4 +150,58 @@ class DiaryMathTest {
         assertNull(Mood.fromScore(null))
         assertNull(Mood.fromScore(99))
     }
+
+    // --- streak grace (IDEAS #51) ----------------------------------------------
+
+    @Test fun grace_unbrokenRun_matchesStrictStreak_noGraceUsed() {
+        val today = LocalDate.parse("2026-07-11")
+        val d = dates("2026-07-09", "2026-07-10", "2026-07-11")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(3, r.count)
+        assertEquals(false, r.graceUsed)
+    }
+
+    @Test fun grace_bridgesOneMissedDayInsideRun() {
+        val today = LocalDate.parse("2026-07-11")
+        // 8th, 9th written; 10th missed; 11th written → grace keeps the run at 3.
+        val d = dates("2026-07-08", "2026-07-09", "2026-07-11")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(3, r.count)
+        assertEquals(true, r.graceUsed)
+    }
+
+    @Test fun grace_doesNotBridgeTwoMissedDays() {
+        val today = LocalDate.parse("2026-07-11")
+        // 11th written, 10th+9th missed, 8th written → only today counts.
+        val d = dates("2026-07-08", "2026-07-11")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(1, r.count)
+        assertEquals(false, r.graceUsed)
+    }
+
+    @Test fun grace_onlyOneGapPerRun() {
+        val today = LocalDate.parse("2026-07-11")
+        // Two separate single-day gaps: only the first (most recent) is forgiven.
+        val d = dates("2026-07-05", "2026-07-07", "2026-07-09", "2026-07-10", "2026-07-11")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(4, r.count) // 11,10,9 + bridged gap on the 8th + 7; stops before the gap on the 6th
+        assertEquals(true, r.graceUsed)
+    }
+
+    @Test fun grace_todayPendingAndYesterdayMissed_reachesRun() {
+        val today = LocalDate.parse("2026-07-11")
+        // Nothing today or yesterday, but a run through the 9th: grace reaches it.
+        val d = dates("2026-07-08", "2026-07-09")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(2, r.count)
+        assertEquals(true, r.graceUsed)
+    }
+
+    @Test fun grace_noEntriesAnywhereNearToday_isZero() {
+        val today = LocalDate.parse("2026-07-11")
+        val d = dates("2026-07-01")
+        val r = DiaryMath.currentStreakWithGrace(d, today)
+        assertEquals(0, r.count)
+        assertEquals(false, r.graceUsed)
+    }
 }

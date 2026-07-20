@@ -14,17 +14,23 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,10 +38,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.fadghost.notesapp.data.db.entity.Attachment
 import com.fadghost.notesapp.ui.components.AuraGlyph
@@ -159,6 +167,44 @@ private fun ViewerContent(att: Attachment, onDismiss: () -> Unit) {
                 style = AuraType.body.copy(color = Color.White),
                 modifier = Modifier.align(Alignment.Center)
             )
+        }
+
+        // OCR "Copy text" pill (IDEAS #59) — surfaces the already-indexed text so it can
+        // finally leave the image. Only shown when indexing actually produced text.
+        val ocr = att.ocrText?.trim().orEmpty()
+        if (ocr.isNotEmpty()) {
+            val clipboard = LocalClipboardManager.current
+            var copied by remember(att.id) { mutableStateOf(false) }
+            LaunchedEffect(copied) {
+                if (copied) {
+                    kotlinx.coroutines.delay(1600)
+                    copied = false
+                }
+            }
+            val copyInteraction = remember { MutableInteractionSource() }
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 24.dp)
+                    .clip(RoundedCornerShape(tokens.radii.pill))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .auraPress(copyInteraction)
+                    .clickable(copyInteraction, indication = null) {
+                        clipboard.setText(AnnotatedString(ocr))
+                        copied = true
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .semantics { contentDescription = if (copied) "Text copied" else "Copy text from image" },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AuraGlyph(if (copied) Glyph.CHECK else Glyph.DUPLICATE, Color.White, Modifier.size(16.dp))
+                Box(Modifier.width(8.dp))
+                BasicText(
+                    if (copied) "Copied" else "Copy text",
+                    style = AuraType.label.copy(color = Color.White)
+                )
+            }
         }
 
         // Close button (non-gesture dismiss).

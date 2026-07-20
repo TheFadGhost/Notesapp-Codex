@@ -115,6 +115,10 @@ class EditorAiViewModel @Inject constructor(
     val autoCleanTranscript: StateFlow<Boolean> =
         repo.autoCleanTranscript.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    /** Current default text model — feeds the error-card "retry with a different model" chips. */
+    val currentTextModel: StateFlow<String> =
+        repo.textModel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
     private val _cleanup = MutableStateFlow(CleanupState())
     val cleanup: StateFlow<CleanupState> = _cleanup.asStateFlow()
 
@@ -133,6 +137,10 @@ class EditorAiViewModel @Inject constructor(
     private var noteIdForRun = 0L
     private var extractSourceNoteId: Long? = null
     private var textForRun = ""
+    private var extractTextForRun = ""
+    private var extractNoteIdForRun = 0L
+    private var memoryTextForRun = ""
+    private var memoryNoteIdForRun = 0L
     private val insertedRows = ArrayList<InsertedRow>()
     /** The action the current Undo snackbar performs (extract batch OR memory save). */
     private var undoAction: (() -> Unit)? = null
@@ -271,6 +279,8 @@ class EditorAiViewModel @Inject constructor(
 
     fun startExtract(noteId: Long, text: String) {
         if (text.isBlank()) return
+        extractTextForRun = text
+        extractNoteIdForRun = noteId
         extractSourceNoteId = noteId.takeIf { it > 0 }
         insertedRows.clear()
         _extract.value = ExtractState(active = true, loading = true)
@@ -376,6 +386,8 @@ class EditorAiViewModel @Inject constructor(
      */
     fun startAddToMemory(noteId: Long, text: String) {
         if (text.isBlank()) return
+        memoryTextForRun = text
+        memoryNoteIdForRun = noteId
         _memory.value = MemoryState(active = true, loading = true, thinking = memoryThinking.random())
         memoryJob?.cancel()
         memoryJob = viewModelScope.launch {
@@ -471,11 +483,40 @@ class EditorAiViewModel @Inject constructor(
         )
     }
 
+    // --- Retry with a different model (IDEAS #28) --------------------------------
+
+    /**
+     * Error-card model swap: persist the new default text model (same effect as the
+     * Settings picker — deliberate, so a broken model stays swapped out), then re-run
+     * whichever operation failed. One tap from dead-end to answer.
+     */
+    fun swapModelRetryCleanup(modelId: String) {
+        viewModelScope.launch {
+            repo.setTextModel(modelId)
+            regenerateCleanup()
+        }
+    }
+
+    fun swapModelRetryExtract(modelId: String) {
+        viewModelScope.launch {
+            repo.setTextModel(modelId)
+            startExtract(extractNoteIdForRun, extractTextForRun)
+        }
+    }
+
+    fun swapModelRetryMemory(modelId: String) {
+        viewModelScope.launch {
+            repo.setTextModel(modelId)
+            startAddToMemory(memoryNoteIdForRun, memoryTextForRun)
+        }
+    }
+
     private fun friendly(e: Throwable): String = when (e) {
         is OpenRouterError.InvalidKey -> "Your API key was rejected. Check it in Settings."
         is OpenRouterError.NoCredit -> "Your OpenRouter account is out of credit."
         is OpenRouterError.RateLimited -> "Rate limited — please try again in a moment."
         is OpenRouterError.ModelUnavailable -> "That model is unavailable. Pick another in Settings."
+        is OpenRouterError.BudgetReached -> "Monthly AI budget reached — raise or clear it in Settings → AI."
         is OpenRouterError.Network -> "AI unavailable — your note is untouched."
         is OpenRouterError.Parse -> "Could not read the model's reply. Try again."
         // Surface the real OpenRouter message (e.g. a rejected request param) instead of

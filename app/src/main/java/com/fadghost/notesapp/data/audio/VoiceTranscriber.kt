@@ -37,7 +37,8 @@ class VoiceTranscriber @Inject constructor(
     private val client: OpenRouterClient,
     private val keyStore: ApiKeyStore,
     private val prefs: AiPreferences,
-    private val costDao: AiCostDao
+    private val costDao: AiCostDao,
+    private val budgetGate: com.fadghost.notesapp.data.ai.AiBudgetGate
 ) {
     /** STT model id currently configured (PLAN.md §5 default: Qwen3 ASR Flash). */
     suspend fun sttModel(): String = prefs.sttModel.first()
@@ -53,6 +54,7 @@ class VoiceTranscriber @Inject constructor(
         noteId: Long?,
         onProgress: (VoiceProgress) -> Unit = {}
     ): String {
+        budgetGate.ensureWithinBudget()
         val key = keyStore.get() ?: throw OpenRouterError.InvalidKey
         val model = prefs.sttModel.first()
         val total = segments.size

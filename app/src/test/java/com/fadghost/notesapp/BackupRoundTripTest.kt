@@ -9,6 +9,7 @@ import com.fadghost.notesapp.data.backup.BackupNote
 import com.fadghost.notesapp.data.backup.BackupReminder
 import com.fadghost.notesapp.data.backup.BackupRestoreGuard
 import com.fadghost.notesapp.data.backup.BackupSerializer
+import com.fadghost.notesapp.data.backup.BackupSettings
 import com.fadghost.notesapp.data.backup.BackupTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -131,6 +132,28 @@ class BackupRoundTripTest {
         assertEquals(data.diaryEntries, preview.data.diaryEntries)
         assertEquals(data.events, preview.data.events)
         assertEquals(data.reminders, preview.data.reminders)
+    }
+
+    @Test fun settingsRoundTripAndDefaultToNull() {
+        // No settings (older/plain backup) → decodes to null, nothing to restore.
+        assertEquals(null, BackupSerializer.parse(ByteArrayInputStream(exported(sample()))).data.settings)
+
+        // With settings (IDEAS #97) → every non-secret preference survives the trip.
+        val settings = BackupSettings(
+            themeMode = "AMOLED",
+            accentIndex = 3,
+            reduceMotion = true,
+            textScale = 1.1f,
+            textModel = "deepseek/deepseek-v4-flash",
+            sttModel = "openai/gpt-4o-mini-transcribe",
+            autoCleanTranscript = true,
+            monthlyBudgetUsd = 5.0,
+            favoriteModels = listOf("z-ai/glm-5.2")
+        )
+        val preview = BackupSerializer.parse(
+            ByteArrayInputStream(exported(sample().copy(settings = settings)))
+        )
+        assertEquals(settings, preview.data.settings)
     }
 
     @Test fun everyManifestEntryHasChecksum() {

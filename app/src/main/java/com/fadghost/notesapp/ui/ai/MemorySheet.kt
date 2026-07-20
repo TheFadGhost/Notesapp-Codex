@@ -60,7 +60,9 @@ fun MemorySheet(
     onCancelEdit: (Long) -> Unit,
     onApplyEdit: (Long, String, String) -> Unit,
     onKeep: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    currentModel: String = "",
+    onSwapModel: ((String) -> Unit)? = null
 ) {
     val tokens = Aura.tokens
     AnimatedVisibility(state.active, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -105,7 +107,8 @@ fun MemorySheet(
                             state.thinking.ifBlank { "Noting what matters…" },
                             style = AuraType.body.copy(color = tokens.colors.textSecondary)
                         )
-                        state.error != null || state.rawError != null -> MemoryError(state.error, state.rawError, onDismiss)
+                        state.error != null || state.rawError != null ->
+                            MemoryError(state.error, state.rawError, onDismiss, currentModel, onSwapModel)
                         state.cards.isEmpty() -> BasicText(
                             // Folio empty copy — honest, never a blank stare (V3-DELIGHT §3C).
                             state.skippedReason?.let { "Nothing durable to keep here — $it" }
@@ -329,7 +332,13 @@ private fun TextChip(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MemoryError(friendly: String?, raw: String?, onRetry: () -> Unit) {
+private fun MemoryError(
+    friendly: String?,
+    raw: String?,
+    onRetry: () -> Unit,
+    currentModel: String = "",
+    onSwapModel: ((String) -> Unit)? = null
+) {
     val tokens = Aura.tokens
     var showDetails by remember { mutableStateOf(false) }
     Column {
@@ -347,6 +356,10 @@ private fun MemoryError(friendly: String?, raw: String?, onRetry: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SoftButton("Try again", filled = true, onClick = onRetry)
             if (raw != null) TextChip(if (showDetails) "Hide details" else "Show details") { showDetails = !showDetails }
+        }
+        if (onSwapModel != null) {
+            Spacer(Modifier.size(12.dp))
+            ModelSwapRow(currentModel = currentModel, onPick = onSwapModel)
         }
         if (showDetails && raw != null) {
             Spacer(Modifier.size(10.dp))

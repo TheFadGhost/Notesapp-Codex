@@ -88,6 +88,24 @@ data class BackupAttachment(
     val zipPath: String
 )
 
+/**
+ * Non-secret app preferences carried inside the backup (IDEAS #97) so a sideload
+ * reinstall doesn't reset theme/model choices. All fields optional: old backups
+ * decode to null and simply restore nothing. NEVER any key or secret here.
+ */
+@Serializable
+data class BackupSettings(
+    val themeMode: String? = null,
+    val accentIndex: Int? = null,
+    val reduceMotion: Boolean? = null,
+    val textScale: Float? = null,
+    val textModel: String? = null,
+    val sttModel: String? = null,
+    val autoCleanTranscript: Boolean? = null,
+    val monthlyBudgetUsd: Double? = null,
+    val favoriteModels: List<String> = emptyList()
+)
+
 /** Everything exported, in memory. Contains no secrets. */
 @Serializable
 data class BackupData(
@@ -98,7 +116,9 @@ data class BackupData(
     /** Added in format v2; absent v1 fields decode to empty lists. */
     val diaryEntries: List<BackupDiaryEntry> = emptyList(),
     val events: List<BackupEvent> = emptyList(),
-    val reminders: List<BackupReminder> = emptyList()
+    val reminders: List<BackupReminder> = emptyList(),
+    /** Optional JSON-only addition (no new ZIP entries); null in older backups. */
+    val settings: BackupSettings? = null
 )
 
 @Serializable

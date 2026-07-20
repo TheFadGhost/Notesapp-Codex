@@ -24,7 +24,10 @@ enum class Mood(val score: Int, val label: String) {
 }
 
 /** Current run (ending today, or yesterday while today is still "pending") + all-time best. */
-data class DiaryStreaks(val current: Int, val longest: Int)
+data class DiaryStreaks(val current: Int, val longest: Int, val graceUsed: Boolean = false)
+
+/** [currentStreakWithGrace] result: run length + whether a grace day bridged a gap. */
+data class StreakResult(val count: Int, val graceUsed: Boolean)
 
 /** One heat-map square: its calendar date and an accent-intensity level 0..4 (0 == no entry). */
 data class HeatCell(val date: LocalDate, val level: Int)
@@ -53,6 +56,42 @@ object DiaryMath {
             day = day.minusDays(1)
         }
         return count
+    }
+
+    /**
+     * Streak grace (IDEAS #51): like [currentStreak], but ONE fully-missed day inside
+     * the run is forgiven — the run continues across it (the missed day itself adds
+     * nothing to the count). One busy day no longer wipes a 30-day habit. Grace also
+     * covers the anchor: today pending + yesterday missed still keeps the run alive
+     * from the day before. The all-time longest streak stays strict — history is
+     * honest; forgiveness applies only to the run you're living in.
+     */
+    fun currentStreakWithGrace(dates: Set<LocalDate>, today: LocalDate): StreakResult {
+        var graceLeft = 1
+        var graceUsed = false
+        val anchor = when {
+            today in dates -> today
+            today.minusDays(1) in dates -> today.minusDays(1)
+            // Today pending AND yesterday missed: spend the grace day to reach the run.
+            today.minusDays(2) in dates -> {
+                graceLeft = 0; graceUsed = true
+                today.minusDays(2)
+            }
+            else -> return StreakResult(0, graceUsed = false)
+        }
+        var count = 0
+        var day = anchor
+        while (true) {
+            if (day in dates) {
+                count++
+                day = day.minusDays(1)
+            } else if (graceLeft > 0 && day.minusDays(1) in dates) {
+                graceLeft = 0
+                graceUsed = true
+                day = day.minusDays(1)
+            } else break
+        }
+        return StreakResult(count, graceUsed)
     }
 
     /** Longest consecutive-day run anywhere in the history. */

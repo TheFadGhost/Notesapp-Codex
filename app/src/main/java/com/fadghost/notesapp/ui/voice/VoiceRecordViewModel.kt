@@ -301,6 +301,7 @@ class VoiceRecordViewModel @Inject constructor(
         is OpenRouterError.NoCredit -> "Your OpenRouter account is out of credit."
         is OpenRouterError.RateLimited -> "Rate limited — try again in a moment."
         is OpenRouterError.ModelUnavailable -> "STT model \"${error.model}\" is unavailable. Pick another in Settings."
+        is OpenRouterError.BudgetReached -> "Monthly AI budget reached — raise it in Settings → AI. Your audio is saved."
         is OpenRouterError.Network -> "Couldn't reach OpenRouter. Your audio is saved."
         is OpenRouterError.Parse -> "Couldn't read the transcript. Try again."
         else -> "Something went wrong. Your audio is saved."

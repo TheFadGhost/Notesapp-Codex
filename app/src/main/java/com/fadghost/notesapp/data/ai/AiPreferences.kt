@@ -2,6 +2,7 @@ package com.fadghost.notesapp.data.ai
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -30,6 +31,7 @@ class AiPreferences @Inject constructor(
     private val recentsKey = stringPreferencesKey("recent_models") // ordered CSV, newest first
     private val modelsFetchedKey = longPreferencesKey("models_fetched_at")
     private val autoCleanTranscriptKey = booleanPreferencesKey("auto_clean_transcript")
+    private val monthlyBudgetKey = doublePreferencesKey("monthly_budget_usd")
 
     val textModel: Flow<String> = context.aiSettingsStore.data.map { it[textModelKey] ?: DEFAULT_TEXT_MODEL }
 
@@ -67,6 +69,13 @@ class AiPreferences @Inject constructor(
         context.aiSettingsStore.edit { it[sttModelKey] = safe }
     }
 
+    /** Additive favourite (backup restore): stars [id] without ever un-starring. */
+    suspend fun favoriteIfAbsent(id: String) {
+        context.aiSettingsStore.edit { p ->
+            p[favoritesKey] = (p[favoritesKey] ?: emptySet()) + id
+        }
+    }
+
     suspend fun toggleFavorite(id: String) {
         context.aiSettingsStore.edit { p ->
             val cur = (p[favoritesKey] ?: emptySet()).toMutableSet()
@@ -81,6 +90,14 @@ class AiPreferences @Inject constructor(
 
     suspend fun setAutoCleanTranscript(enabled: Boolean) {
         context.aiSettingsStore.edit { it[autoCleanTranscriptKey] = enabled }
+    }
+
+    /** Monthly AI spend cap in USD (IDEAS #26). 0.0 = no cap (the default). */
+    val monthlyBudgetUsd: Flow<Double> =
+        context.aiSettingsStore.data.map { it[monthlyBudgetKey] ?: 0.0 }
+
+    suspend fun setMonthlyBudgetUsd(capUsd: Double) {
+        context.aiSettingsStore.edit { it[monthlyBudgetKey] = capUsd.coerceAtLeast(0.0) }
     }
 
     private suspend fun pushRecent(id: String) {

@@ -21,6 +21,9 @@ interface AiCostDao {
 
     @Query("SELECT COALESCE(SUM(costUsd), 0) FROM AiCallCost WHERE createdAt >= :monthStart")
     fun observeMonthTotal(monthStart: Long): Flow<Double>
+
+    @Query("SELECT COALESCE(SUM(costUsd), 0) FROM AiCallCost WHERE createdAt >= :monthStart")
+    suspend fun monthTotal(monthStart: Long): Double
 }
 
 @Dao

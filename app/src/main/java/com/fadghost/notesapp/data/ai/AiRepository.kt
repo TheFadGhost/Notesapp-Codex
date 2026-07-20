@@ -54,7 +54,8 @@ class AiRepository @Inject constructor(
     private val eventDao: EventDao,
     private val reminderDao: ReminderDao,
     private val connectivity: Connectivity,
-    private val alarm: ReminderAlarm
+    private val alarm: ReminderAlarm,
+    private val budgetGate: AiBudgetGate
 ) {
     private val extractionParser = ActionExtractionParser()
     // Voice-ramble variant: a day with no clock time defaults to 08:00 (the owner's
@@ -114,6 +115,10 @@ class AiRepository @Inject constructor(
     suspend fun setSttModel(id: String) = prefs.setSttModel(id)
     suspend fun toggleFavorite(id: String) = prefs.toggleFavorite(id)
     suspend fun setAutoCleanTranscript(enabled: Boolean) = prefs.setAutoCleanTranscript(enabled)
+
+    /** Monthly AI budget cap in USD; 0 = off (IDEAS #26). */
+    val monthlyBudgetUsd: Flow<Double> = prefs.monthlyBudgetUsd
+    suspend fun setMonthlyBudgetUsd(capUsd: Double) = prefs.setMonthlyBudgetUsd(capUsd)
 
     /**
      * Live transcription-model discovery (item 9): queries `/models?output_modalities=
@@ -583,8 +588,11 @@ class AiRepository @Inject constructor(
 
     // --- Helpers ----------------------------------------------------------------
 
-    private suspend fun requireKey(): String =
-        keyStore.get() ?: throw com.fadghost.notesapp.data.ai.net.OpenRouterError.InvalidKey
+    private suspend fun requireKey(): String {
+        // Budget cap first (IDEAS #26): a capped month must not spend, key or no key.
+        budgetGate.ensureWithinBudget()
+        return keyStore.get() ?: throw com.fadghost.notesapp.data.ai.net.OpenRouterError.InvalidKey
+    }
 
     private suspend fun contextLengthFor(model: String): Int =
         modelDao.all().firstOrNull { it.id == model }?.contextLength?.takeIf { it > 0 } ?: DEFAULT_CONTEXT

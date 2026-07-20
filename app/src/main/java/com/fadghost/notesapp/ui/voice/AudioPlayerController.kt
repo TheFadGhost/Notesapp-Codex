@@ -18,6 +18,35 @@ class AudioPlayerController(private val paths: List<String>) {
     var finished = false
         private set
 
+    /** Playback speed (IDEAS #32). Applied to the live player and every next segment. */
+    var speed: Float = 1f
+        private set
+
+    /** Cycle 1× → 1.25× → 1.5× → 2× → 1×; returns the new speed. */
+    fun cycleSpeed(): Float {
+        speed = when (speed) {
+            1f -> 1.25f
+            1.25f -> 1.5f
+            1.5f -> 2f
+            else -> 1f
+        }
+        // setPlaybackParams on a paused MediaPlayer starts it — only touch a live one.
+        if (isPlaying) applySpeed()
+        return speed
+    }
+
+    private fun applySpeed() {
+        val p = player ?: return
+        runCatching { p.playbackParams = p.playbackParams.setSpeed(speed) }
+    }
+
+    /** ±10s skip within the current segment (IDEAS #32). */
+    fun skip(deltaMs: Int) {
+        val p = player ?: return
+        val target = (positionMs() + deltaMs).coerceIn(0, currentDurationMs().coerceAtLeast(0))
+        runCatching { p.seekTo(target) }
+    }
+
     /** Position within the current segment (ms). */
     fun positionMs(): Int = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)
 
@@ -34,6 +63,7 @@ class AudioPlayerController(private val paths: List<String>) {
         val p = player ?: prepareAt(index) ?: return
         runCatching { p.start() }
         isPlaying = true
+        applySpeed()
     }
 
     fun pause() {
@@ -61,7 +91,7 @@ class AudioPlayerController(private val paths: List<String>) {
         val next = index + 1
         release()
         if (next < paths.size) {
-            prepareAt(next)?.let { it.start(); isPlaying = true }
+            prepareAt(next)?.let { it.start(); isPlaying = true; applySpeed() }
         } else {
             isPlaying = false
             finished = true

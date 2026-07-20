@@ -1,5 +1,16 @@
 # What's new
 
+## v3.4.0 — Quality of life
+- Find inside a note: tap the search icon in the editor to highlight every match and step through them.
+- Copy text straight out of an image — the viewer's new Copy text pill uses the text already recognised in your photos.
+- AI error cards can now retry with a different recommended model in one tap.
+- Set a monthly AI budget in Settings → AI; the app pauses AI before spending past it and warns as you get close.
+- Streak grace: one missed diary day no longer wipes your current streak.
+- Voice notes play at 1×–2× with ±10s skip buttons.
+- Pick your text size (Small to Larger) in Settings → Appearance.
+- The Backup card shows when you last exported and nudges when it's been a while.
+- Backups now carry your theme, text size and AI model choices, restored when you Replace from a backup. Never your API key.
+
 ## v3.3.0 — Deliberate motion and reliable capture
 - A compact draggable recording squircle can stay above other apps. Tap for Pause, Stop, Discard and Open; dragging never counts as a click.
 - Diary voice capture now offers Make it clean, turning a ramble into proper sentences without silently replacing the raw transcript.

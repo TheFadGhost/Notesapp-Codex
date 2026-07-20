@@ -75,7 +75,9 @@ fun ExtractSheet(
     onApplyEdit: (Long, String, Long?) -> Unit,
     onRevise: (Long, String) -> Unit,
     onAcceptAll: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    currentModel: String = "",
+    onSwapModel: ((String) -> Unit)? = null
 ) {
     val tokens = Aura.tokens
     AnimatedVisibility(state.active, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -117,7 +119,9 @@ fun ExtractSheet(
                         state.error != null || state.rawError != null -> ErrorBlock(
                             friendly = state.error,
                             raw = state.rawError,
-                            onRetry = onDismiss
+                            onRetry = onDismiss,
+                            currentModel = currentModel,
+                            onSwapModel = onSwapModel
                         )
                         state.cards.isEmpty() -> BasicText(
                             if (state.acceptedCount > 0) "All set — ${state.acceptedCount} added."
@@ -369,7 +373,13 @@ private fun WarningLine(text: String) {
  * disclosure so it never dumps on the user by default.
  */
 @Composable
-private fun ErrorBlock(friendly: String?, raw: String?, onRetry: () -> Unit) {
+private fun ErrorBlock(
+    friendly: String?,
+    raw: String?,
+    onRetry: () -> Unit,
+    currentModel: String = "",
+    onSwapModel: ((String) -> Unit)? = null
+) {
     val tokens = Aura.tokens
     var showDetails by remember { mutableStateOf(false) }
     Column {
@@ -389,6 +399,10 @@ private fun ErrorBlock(friendly: String?, raw: String?, onRetry: () -> Unit) {
             if (raw != null) {
                 TextAction(if (showDetails) "Hide details" else "Show details") { showDetails = !showDetails }
             }
+        }
+        if (onSwapModel != null) {
+            Spacer(Modifier.size(12.dp))
+            ModelSwapRow(currentModel = currentModel, onPick = onSwapModel)
         }
         if (showDetails && raw != null) {
             Spacer(Modifier.size(10.dp))

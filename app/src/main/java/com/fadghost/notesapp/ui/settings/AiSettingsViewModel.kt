@@ -35,6 +35,8 @@ class AiSettingsViewModel @Inject constructor(
     val monthTotal: StateFlow<Double> = repo.observeMonthTotal(now).state(0.0)
     val lastCall = repo.lastCall.state(null)
     val autoCleanTranscript: StateFlow<Boolean> = repo.autoCleanTranscript.state(false)
+    /** Monthly AI budget cap in USD; 0 = off (IDEAS #26). */
+    val monthlyBudget: StateFlow<Double> = repo.monthlyBudgetUsd.state(0.0)
 
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
@@ -104,6 +106,7 @@ class AiSettingsViewModel @Inject constructor(
     fun setSttModel(id: String) { if (id.isNotBlank()) viewModelScope.launch { repo.setSttModel(id.trim()) } }
     fun toggleFavorite(id: String) { viewModelScope.launch { repo.toggleFavorite(id) } }
     fun setAutoCleanTranscript(enabled: Boolean) { viewModelScope.launch { repo.setAutoCleanTranscript(enabled) } }
+    fun setMonthlyBudget(capUsd: Double) { viewModelScope.launch { repo.setMonthlyBudgetUsd(capUsd) } }
 
     /** Live-refresh the STT picker list from `/models?output_modalities=transcription`. */
     fun refreshSttModels() {

@@ -111,6 +111,7 @@ fun EditorScreen(
     val memoryState by aiViewModel.memory.collectAsStateWithLifecycle()
     val aiSnackbar by aiViewModel.snackbar.collectAsStateWithLifecycle()
     val autoCleanTranscript by aiViewModel.autoCleanTranscript.collectAsStateWithLifecycle()
+    val currentTextModel by aiViewModel.currentTextModel.collectAsStateWithLifecycle()
     val queuedResult by remember(state.noteId) { aiViewModel.pendingQueuedCleanup(state.noteId) }.collectAsStateWithLifecycle()
 
     val audioChips by audioViewModel.chips.collectAsStateWithLifecycle()
@@ -145,6 +146,11 @@ fun EditorScreen(
     // Y (root px) of the bottom of the title/header, so the first-run coach card can anchor
     // strictly BELOW it and never cover the title or top bar (bug 6).
     var coachAnchorY by remember { mutableStateOf(0) }
+    // Find-in-note (IDEAS #15): match ranges live on the SOURCE text; highlights are
+    // mapped through the attachment-chip transform, stepping scrolls the match into view.
+    var findActive by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findIndex by remember { mutableStateOf(0) }
 
     // One-time coach tip labelling the three AI icons (P1-3), DataStore-gated.
     val context = LocalContext.current
@@ -318,12 +324,43 @@ fun EditorScreen(
                 target = dndTarget
             )
     ) {
+        val editorScroll = rememberScrollState()
+        var columnTopRootY by remember { mutableStateOf(0f) }
+        var bodyTopRootY by remember { mutableStateOf(0f) }
+        val findMatches = remember(bodyValue.text, findQuery, findActive) {
+            if (findActive) FindInNote.matches(bodyValue.text, findQuery) else emptyList()
+        }
+        // Keep the pointer in range while the note or query changes under it.
+        LaunchedEffect(findMatches.size) {
+            findIndex = FindInNote.wrapIndex(findIndex, findMatches.size).coerceAtLeast(0)
+        }
+        // The body layout runs over TRANSFORMED text (attachment chips), so source match
+        // offsets go through the display map before hitting getBoundingBox.
+        var mapSourceToDisplay by remember { mutableStateOf<((Int) -> Int)?>(null) }
+
+        // Scroll the current match into view (upper third of the viewport).
+        fun scrollToMatch(index: Int) {
+            val match = findMatches.getOrNull(index) ?: return
+            val layout = bodyLayout ?: return
+            coachScope.launch {
+                val displayOffset = mapSourceToDisplay?.invoke(match.first) ?: match.first
+                val lineTop = runCatching {
+                    layout.getBoundingBox(displayOffset.coerceIn(0, layout.layoutInput.text.length - 1)).top
+                }.getOrNull() ?: return@launch
+                val bodyTopInContent = bodyTopRootY - columnTopRootY + editorScroll.value
+                val target = (bodyTopInContent + lineTop - editorScroll.viewportSize / 3f)
+                    .toInt().coerceIn(0, editorScroll.maxValue)
+                editorScroll.animateScrollTo(target)
+            }
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .onGloballyPositioned { columnTopRootY = it.positionInRoot().y }
+                .verticalScroll(editorScroll)
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 96.dp)
         ) {
@@ -352,6 +389,16 @@ fun EditorScreen(
                             }
                         }
                         MicAction(tint = tokens.colors.accent) { onVoice() }
+                        IconAction(Glyph.SEARCH, tint = if (findActive) tokens.colors.accent else tokens.colors.textPrimary) {
+                            if (findActive) {
+                                findActive = false
+                            } else {
+                                focus.clearFocus()
+                                findQuery = ""
+                                findIndex = 0
+                                findActive = true
+                            }
+                        }
                         IconAction(Glyph.PAPERCLIP, tint = tokens.colors.accent) { onAttach() }
                         IconAction(Glyph.SHARE, tint = tokens.colors.accent) {
                             focus.clearFocus()
@@ -387,6 +434,35 @@ fun EditorScreen(
                         viewModel.deleteNote { id -> onDeleted(id) }
                     }
                 }
+            }
+
+            // 🔎 Find-in-note bar (IDEAS #15) — sits under the top bar, note stays visible.
+            androidx.compose.animation.AnimatedVisibility(visible = findActive) {
+                Column {
+                    FindInNoteBar(
+                        query = findQuery,
+                        onQuery = { q ->
+                            findQuery = q
+                            findIndex = 0
+                        },
+                        matchIndex = if (findMatches.isEmpty()) 0 else findIndex.coerceIn(0, findMatches.size - 1),
+                        matchCount = findMatches.size,
+                        onPrev = {
+                            findIndex = FindInNote.wrapIndex(findIndex - 1, findMatches.size).coerceAtLeast(0)
+                            scrollToMatch(findIndex)
+                        },
+                        onNext = {
+                            findIndex = FindInNote.wrapIndex(findIndex + 1, findMatches.size).coerceAtLeast(0)
+                            scrollToMatch(findIndex)
+                        },
+                        onClose = { findActive = false }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            // Jump to the first hit as the query narrows — no extra tap needed.
+            LaunchedEffect(findQuery, findMatches.size) {
+                if (findActive && findMatches.isNotEmpty()) scrollToMatch(0)
             }
 
             Spacer(Modifier.height(8.dp))
@@ -426,7 +502,7 @@ fun EditorScreen(
             // Body — live-styled markdown, tappable checkboxes, smart lists, and inline
             // attachment bubble chips (M-A). The chip transform replaces [[att:id]] with
             // the file name, so overlays map source offsets through displayBody.mapOffset.
-            Box {
+            Box(Modifier.onGloballyPositioned { bodyTopRootY = it.positionInRoot().y }) {
                 val displayBody = remember(bodyValue.text, attachmentsById, tokens) {
                     com.fadghost.notesapp.ui.attach.AttachmentBodyBuilder.build(
                         source = bodyValue.text,
@@ -439,8 +515,35 @@ fun EditorScreen(
                         missing = tokens.colors.danger
                     )
                 }
-                val transformation = remember(displayBody) {
-                    androidx.compose.ui.text.input.VisualTransformation { displayBody.transformed }
+                androidx.compose.runtime.SideEffect { mapSourceToDisplay = displayBody::mapOffset }
+                val transformation = remember(displayBody, findMatches, findIndex, tokens) {
+                    androidx.compose.ui.text.input.VisualTransformation {
+                        val base = displayBody.transformed
+                        if (findMatches.isEmpty()) base
+                        else {
+                            // Overlay match highlights on the chip-transformed text; the current
+                            // match reads stronger than the rest.
+                            val builder = androidx.compose.ui.text.AnnotatedString.Builder(base.text)
+                            val len = base.text.length
+                            findMatches.forEachIndexed { i, range ->
+                                val start = displayBody.mapOffset(range.first).coerceIn(0, len)
+                                val end = displayBody.mapOffset(range.last + 1).coerceIn(start, len)
+                                if (end > start) {
+                                    builder.addStyle(
+                                        androidx.compose.ui.text.SpanStyle(
+                                            background = tokens.colors.accent.copy(
+                                                alpha = if (i == findIndex) 0.42f else 0.18f
+                                            )
+                                        ),
+                                        start, end
+                                    )
+                                }
+                            }
+                            androidx.compose.ui.text.input.TransformedText(
+                                builder.toAnnotatedString(), base.offsetMapping
+                            )
+                        }
+                    }
                 }
                 BasicTextField(
                     value = bodyValue,
@@ -600,7 +703,9 @@ fun EditorScreen(
                 aiViewModel.acceptCleanup()?.let {
                     applyBody(TextFieldValue(it, TextRange(it.length)), UndoStack.CoalesceKey.BOUNDARY)
                 }
-            }
+            },
+            currentModel = currentTextModel,
+            onSwapModel = aiViewModel::swapModelRetryCleanup
         )
 
         // 📅 Extract confirmation cards sheet.
@@ -613,7 +718,9 @@ fun EditorScreen(
             onApplyEdit = aiViewModel::applyEdit,
             onRevise = aiViewModel::reviseCard,
             onAcceptAll = aiViewModel::acceptAll,
-            onDismiss = aiViewModel::dismissExtract
+            onDismiss = aiViewModel::dismissExtract,
+            currentModel = currentTextModel,
+            onSwapModel = aiViewModel::swapModelRetryExtract
         )
 
         // ✨ AI sparkle menu — Clean up / Rewrite / Extract / Add to memory (§1.9).
@@ -637,7 +744,9 @@ fun EditorScreen(
             onCancelEdit = aiViewModel::cancelMemoryEdit,
             onApplyEdit = aiViewModel::applyMemoryEdit,
             onKeep = aiViewModel::keepMemory,
-            onDismiss = aiViewModel::dismissMemory
+            onDismiss = aiViewModel::dismissMemory,
+            currentModel = currentTextModel,
+            onSwapModel = aiViewModel::swapModelRetryMemory
         )
 
         // Universal Undo snackbar — serves both extract batch-accept and memory saves.

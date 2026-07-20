@@ -89,9 +89,12 @@ class DiaryViewModel @Inject constructor(
         val active = entries.filter { it.body.isNotBlank() || it.mood != null }
         val activeDates = active.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }.toSet()
 
+        // Current streak forgives ONE missed day (IDEAS #51); the record stays strict.
+        val current = DiaryMath.currentStreakWithGrace(activeDates, day)
         val streaks = DiaryStreaks(
-            current = DiaryMath.currentStreak(activeDates, day),
-            longest = DiaryMath.longestStreak(activeDates)
+            current = current.count,
+            longest = DiaryMath.longestStreak(activeDates),
+            graceUsed = current.graceUsed
         )
 
         val weights = active.mapNotNull { e ->

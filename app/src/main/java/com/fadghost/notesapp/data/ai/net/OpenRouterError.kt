@@ -34,4 +34,11 @@ sealed class OpenRouterError(message: String) : Exception(message) {
     /** Any other non-success status. */
     data class Unknown(val status: Int, val detail: String? = null) :
         OpenRouterError("Unexpected error (HTTP $status)" + (detail?.let { ": $it" } ?: ""))
+
+    /**
+     * Local guard, not an API response: the user's monthly AI budget cap is reached
+     * (IDEAS #26). Raised BEFORE any network call so a capped month costs nothing.
+     */
+    data class BudgetReached(val capUsd: Double) :
+        OpenRouterError("Monthly AI budget reached — raise or clear it in Settings → AI")
 }

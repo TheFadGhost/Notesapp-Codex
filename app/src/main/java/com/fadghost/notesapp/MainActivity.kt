@@ -160,6 +160,7 @@ private fun NotesRoot(viewModel: MainViewModel = hiltViewModel()) {
     val mode by viewModel.themeMode.collectAsState()
     val accentIndex by viewModel.accentIndex.collectAsState()
     val userReduceMotion by viewModel.reduceMotion.collectAsState()
+    val textScale by viewModel.textScale.collectAsState()
 
     val systemDark = isSystemInDarkTheme()
     val context = LocalContext.current
@@ -188,7 +189,18 @@ private fun NotesRoot(viewModel: MainViewModel = hiltViewModel()) {
         }
     }
 
-    CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+    // In-app text scale (IDEAS #89): compose the user's choice ONTO the system font
+    // scale by overriding the density local — every sp in the app follows, including
+    // dynamic system sizes (accessibility multiplies, never replaces).
+    val baseDensity = androidx.compose.ui.platform.LocalDensity.current
+    val scaledDensity = remember(baseDensity, textScale) {
+        androidx.compose.ui.unit.Density(baseDensity.density, baseDensity.fontScale * textScale)
+    }
+
+    CompositionLocalProvider(
+        LocalReduceMotion provides reduceMotion,
+        androidx.compose.ui.platform.LocalDensity provides scaledDensity
+    ) {
         AuraTheme(tokens = animated) {
             // Circular reveal from the tapped control on any theme/accent change.
             ThemeRevealScaffold(

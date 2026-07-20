@@ -54,7 +54,9 @@ fun CleanupSheet(
     onCancel: () -> Unit,
     onRegenerate: () -> Unit,
     onKeepOriginal: () -> Unit,
-    onAccept: () -> Unit
+    onAccept: () -> Unit,
+    currentModel: String = "",
+    onSwapModel: ((String) -> Unit)? = null
 ) {
     val tokens = Aura.tokens
     // Success haptic when a clean-up finishes streaming (PLAN.md §10 — AI done).
@@ -133,6 +135,10 @@ fun CleanupSheet(
                     state.error?.let {
                         Spacer(Modifier.size(10.dp))
                         BasicText(it, style = AuraType.label.copy(color = tokens.colors.danger))
+                        if (onSwapModel != null && !state.streaming) {
+                            Spacer(Modifier.size(10.dp))
+                            ModelSwapRow(currentModel = currentModel, onPick = onSwapModel)
+                        }
                     }
                     if (state.queued) {
                         Spacer(Modifier.size(10.dp))

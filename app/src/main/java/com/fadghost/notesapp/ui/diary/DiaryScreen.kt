@@ -466,6 +466,13 @@ private fun StatsCard(state: DiaryUiState, onOpenDay: (LocalDate) -> Unit) {
             StreakStat("Current streak", state.streaks.current, Modifier.weight(1f))
             StreakStat("Longest streak", state.streaks.longest, Modifier.weight(1f))
         }
+        if (state.streaks.graceUsed) {
+            Spacer(Modifier.height(6.dp))
+            BasicText(
+                "One missed day forgiven — write today to keep the run going.",
+                style = AuraType.label.copy(color = tokens.colors.textSecondary)
+            )
+        }
         Spacer(Modifier.height(18.dp))
         BasicText("LAST 5 MONTHS", style = AuraType.labelSm.copy(color = tokens.colors.textSecondary))
         Spacer(Modifier.height(10.dp))

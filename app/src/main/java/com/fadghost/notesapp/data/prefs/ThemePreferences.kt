@@ -3,6 +3,7 @@ package com.fadghost.notesapp.data.prefs
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -28,6 +29,7 @@ class ThemePreferences @Inject constructor(
     private val accentKey = intPreferencesKey("accent_index")
     private val reduceMotionKey = booleanPreferencesKey("reduce_motion")
     private val lastSeenVersionKey = stringPreferencesKey("last_seen_version")
+    private val textScaleKey = floatPreferencesKey("text_scale")
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
         runCatching { ThemeMode.valueOf(prefs[themeKey] ?: ThemeMode.SYSTEM.name) }
@@ -56,6 +58,18 @@ class ThemePreferences @Inject constructor(
         context.dataStore.edit { it[reduceMotionKey] = enabled }
     }
 
+    /**
+     * In-app text scale (IDEAS #89), multiplied with the system font scale via the
+     * density composition local. Clamped so nothing can render unusably tiny/huge.
+     */
+    val textScale: Flow<Float> = context.dataStore.data.map { prefs ->
+        (prefs[textScaleKey] ?: 1f).coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX)
+    }
+
+    suspend fun setTextScale(scale: Float) {
+        context.dataStore.edit { it[textScaleKey] = scale.coerceIn(TEXT_SCALE_MIN, TEXT_SCALE_MAX) }
+    }
+
     /** Last versionName the "What's new" sheet was shown for (PLAN.md §13). */
     val lastSeenVersion: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[lastSeenVersionKey] ?: ""
@@ -63,5 +77,10 @@ class ThemePreferences @Inject constructor(
 
     suspend fun setLastSeenVersion(version: String) {
         context.dataStore.edit { it[lastSeenVersionKey] = version }
+    }
+
+    companion object {
+        const val TEXT_SCALE_MIN = 0.85f
+        const val TEXT_SCALE_MAX = 1.3f
     }
 }

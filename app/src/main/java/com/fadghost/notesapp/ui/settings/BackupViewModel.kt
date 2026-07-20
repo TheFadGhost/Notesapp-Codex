@@ -7,10 +7,13 @@ import com.fadghost.notesapp.data.backup.BackupManager
 import com.fadghost.notesapp.data.backup.BackupPreview
 import com.fadghost.notesapp.data.backup.BackupRestoreGuard
 import com.fadghost.notesapp.data.backup.ImportMode
+import com.fadghost.notesapp.data.prefs.BackupPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,11 +32,16 @@ sealed interface BackupUiState {
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
-    private val backup: BackupManager
+    private val backup: BackupManager,
+    private val backupPrefs: BackupPreferences
 ) : ViewModel() {
 
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
+
+    /** Last successful export (epoch millis, 0 = never) — drives the stale nudge (IDEAS #83). */
+    val lastBackupAt: StateFlow<Long> =
+        backupPrefs.lastBackupAt.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     private val _uiState = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -49,6 +57,7 @@ class BackupViewModel @Inject constructor(
         lastOp = { export(target) }
         run(BackupUiState.Exporting, "Couldn't export your backup.") {
             val count = backup.export(target)
+            backupPrefs.markBackupDone()
             _status.value = "Exported $count notes."
         }
     }

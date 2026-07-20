@@ -385,6 +385,7 @@ class DiaryVoiceViewModel @Inject constructor(
         is OpenRouterError.RateLimited -> "rate_limited"
         is OpenRouterError.ModelUnavailable -> "model_unavailable"
         is OpenRouterError.Parse -> "parse"
+        is OpenRouterError.BudgetReached -> "budget_reached"
         else -> "transcription"
     }
 
@@ -394,6 +395,7 @@ class DiaryVoiceViewModel @Inject constructor(
         is OpenRouterError.RateLimited -> "Rate limited. Your audio is saved; try again shortly."
         is OpenRouterError.ModelUnavailable -> "The selected speech model is unavailable."
         is OpenRouterError.Parse -> "The transcription response couldn't be read."
+        is OpenRouterError.BudgetReached -> "Monthly AI budget reached — raise it in Settings → AI. Your audio is saved."
         else -> "Couldn't transcribe this recording. The audio is still saved."
     }
 }
